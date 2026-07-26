@@ -15,8 +15,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/Logo";
-import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
-
 interface SidebarItem {
   label: string;
   href: string;
@@ -67,7 +65,7 @@ export function StudentSidebar() {
       </nav>
       {/* Dev-only role switcher — desktop only, hidden on mobile per UX rules */}
       <div className="hidden px-3 md:block">
-        <RoleSwitcher current="murid" />
+
       </div>
       <div className="border-t border-line p-3">
         <div className="flex items-center gap-3 rounded-btn px-2 py-2">

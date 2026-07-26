@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/Logo";
-import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
 import { useState } from "react";
 
 export interface SidebarItem {
@@ -66,7 +65,7 @@ export function AppSidebar({
         })}
       </nav>
       <div className="border-t border-line p-3">
-        <RoleSwitcher current={role === "admin" ? "admin" : "guru"} />
+
         <div className="mt-3 flex items-center gap-3 rounded-btn px-2 py-2">
           <UserCircle size={36} className="text-indigo" />
           <div className="min-w-0">
