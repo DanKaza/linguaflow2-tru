@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
   Check,
   X,
-  UserCircle,
-  Award,
   TrendingUp,
   BookOpen,
   RefreshCw,
@@ -18,31 +16,74 @@ import {
   Trophy,
   Zap,
   Target,
+  ClipboardList,
 } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { RingProgress } from "@/components/ui/ProgressBar";
 import { Badge } from "@/components/ui/Badge";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 
-const review = [
-  { no: 1, q: "食べる artinya?", user: "Makan", correct: "Makan", ok: true, exp: "食べる (taberu) = makan, kata kerja golongan 2." },
-  { no: 2, q: "飲む artinya?", user: "Minum", correct: "Minum", ok: true, exp: "飲む (nomu) = minum, kata kerja golongan 1." },
-  { no: 3, q: "行く artinya?", user: "Pergi", correct: "Pergi", ok: true, exp: "行く (iku) = pergi." },
-  { no: 4, q: "買う artinya?", user: "Tidur", correct: "Membeli", ok: false, exp: "買う (kau) = membeli, bukan tidur (寝る)." },
-  { no: 5, q: "待つ artinya?", user: "Menunggu", correct: "Menunggu", ok: true, exp: "待つ (matsu) = menunggu." },
-];
+interface KuisSession {
+  items: { no: number; q: string; kanji: string; furigana: string; user: string; correct: string; ok: boolean; exp: string }[];
+  score: number;
+  correctCount: number;
+  total: number;
+  totalXP: number;
+}
 
-const correctCount = review.filter((r) => r.ok).length;
-const score = Math.round((correctCount / review.length) * 100);
-const baseXP = correctCount * 10;
-const bonusXP = score >= 80 ? 20 : score >= 60 ? 10 : 0;
-const totalXP = baseXP + bonusXP;
+function readSession(): KuisSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("lf-quiz-session");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as KuisSession;
+    if (!Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export default function KuisReview() {
   const router = useRouter();
+  const [session, setSession] = useState<KuisSession | null>(null);
   const [open, setOpen] = useState<number | null>(null);
+
+  // Baca sesi kuis di client setelah mount (sessionStorage tidak tersedia
+  // saat render server → hindari hydration mismatch).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: baca sessionStorage setelah mount.
+    setSession(readSession());
+  }, []);
+
+  if (!session) {
+    return (
+      <StudentShell noHeader>
+        <AnimatedPage>
+          <motion.div variants={staggerContainer} initial="initial" animate="animate">
+            <motion.div variants={staggerItem} className="mt-16 flex flex-col items-center text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint-soft">
+                <ClipboardList size={32} className="text-indigo/40" />
+              </div>
+              <p className="text-sm font-bold text-ink">Belum ada hasil kuis</p>
+              <p className="mt-1 max-w-[16rem] text-xs text-ink-soft">
+                Selesaikan dulu satu sesi kuis untuk melihat hasilnya di sini.
+              </p>
+              <div className="mt-5 w-48">
+                <Button fullWidth onClick={() => router.push("/m/kuis/soal")}>
+                  Mulai Kuis
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatedPage>
+      </StudentShell>
+    );
+  }
+
+  const review = session.items;
+  const { correctCount, total, score, totalXP } = session;
 
   const scoreLabel = score >= 80 ? "Lulus!" : score >= 60 ? "Hampir Lulus!" : "Ayo belajar lagi!";
   const scoreColor = score >= 80 ? "success" : score >= 60 ? "gold" : "error";
@@ -129,18 +170,18 @@ export default function KuisReview() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.35 }}
             >
-              {correctCount} dari {review.length} soal dijawab benar
+              {correctCount} dari {total} soal dijawab benar
             </motion.p>
           </motion.div>
 
           {/* ════════════════════════════════════════ */}
-          {/* STATS — premium cards */}
+          {/* STATS — premium cards (angka asli) */}
           {/* ════════════════════════════════════════ */}
           <motion.div variants={staggerItem} className="mt-5 grid grid-cols-3 gap-2.5">
             {[
-              { v: `${correctCount}/${review.length}`, l: "Benar", icon: Check, c: "text-success", bg: "bg-success/10" },
+              { v: `${correctCount}/${total}`, l: "Benar", icon: Check, c: "text-success", bg: "bg-success/10" },
               { v: `+${totalXP}`, l: "Total XP", icon: Zap, c: "text-gold", bg: "bg-gold/10" },
-              { v: "#5", l: "Peringkat", icon: Trophy, c: "text-indigo", bg: "bg-indigo-tint-soft" },
+              { v: `${total - correctCount}`, l: "Salah", icon: X, c: "text-error", bg: "bg-error/10" },
             ].map((s, i) => (
               <motion.div
                 key={s.l}
@@ -159,43 +200,13 @@ export default function KuisReview() {
           </motion.div>
 
           {/* ════════════════════════════════════════ */}
-          {/* TEACHER COMMENT — premium */}
-          {/* ════════════════════════════════════════ */}
-          <motion.div variants={staggerItem}>
-            <div className="mt-5 rounded-card border border-line bg-paper p-4 shadow-soft transition-all hover:shadow-soft-lg">
-              <div className="flex items-start gap-3">
-                <div className="relative">
-                  <UserCircle size={40} className="text-indigo" />
-                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-success text-[7px] text-white font-bold ring-2 ring-paper">
-                    ✓
-                  </span>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold text-ink">Bu Siti Rahma</p>
-                    <Badge tone="soft" className="text-[9px]">Guru</Badge>
-                  </div>
-                  <div className="mt-1.5 rounded-btn bg-indigo-tint-soft/50 px-3 py-2">
-                    <p className="text-xs text-ink leading-relaxed">
-                      &ldquo;Bagus, tingkatkan hafalan partikel ya! <Sparkles size={14} className="inline" />&rdquo;
-                    </p>
-                  </div>
-                  <p className="mt-1 text-[10px] text-ink-soft/60">
-                    Komentar guru · {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* ════════════════════════════════════════ */}
           {/* REVIEW ACCORDION — polished */}
           {/* ════════════════════════════════════════ */}
           <motion.div variants={staggerItem} className="mt-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-bold text-ink">Review Jawaban</h2>
               <Badge tone="neutral" className="text-[10px]">
-                {correctCount} benar · {review.length - correctCount} salah
+                {correctCount} benar · {total - correctCount} salah
               </Badge>
             </div>
 
@@ -238,7 +249,7 @@ export default function KuisReview() {
 
                       <span className="flex-1 text-sm font-semibold text-ink">
                         <span className="text-ink-soft mr-1">{r.no}.</span>
-                        {r.q}
+                        <span className="jp">{r.kanji}</span> {r.q.replace(`${r.kanji}`, "").trim()}
                       </span>
 
                       <ChevronDown

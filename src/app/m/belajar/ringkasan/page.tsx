@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Check, RotateCcw, PartyPopper, FileText, Star, Flame, Repeat } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
@@ -10,11 +11,39 @@ import { KanjiText } from "@/components/ui/KanjiText";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useProgress, dueReviews } from "@/lib/progress";
 
-export default function SessionSummary() {
+interface SessionSummary {
+  studied: number;
+  xpGain: number;
+}
+
+function readSessionSummary(): SessionSummary {
+  if (typeof window === "undefined") return { studied: 0, xpGain: 0 };
+  try {
+    const raw = sessionStorage.getItem("lf-session-summary");
+    if (!raw) return { studied: 0, xpGain: 0 };
+    const parsed = JSON.parse(raw) as SessionSummary;
+    return {
+      studied: typeof parsed.studied === "number" ? parsed.studied : 0,
+      xpGain: typeof parsed.xpGain === "number" ? parsed.xpGain : 0,
+    };
+  } catch {
+    return { studied: 0, xpGain: 0 };
+  }
+}
+
+export default function SessionSummaryPage() {
   const [progress] = useProgress();
   const due = dueReviews(progress);
-  const studiedNow = 3; // cards in the current deck
-  const xpGain = studiedNow * 20;
+  const [summary, setSummary] = useState<SessionSummary>({ studied: 0, xpGain: 0 });
+  const studiedNow = summary.studied;
+  const xpGain = summary.xpGain;
+
+  // Baca ringkasan sesi di client setelah mount (sessionStorage tidak
+  // tersedia saat render server → hindari hydration mismatch).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: baca sessionStorage setelah mount.
+    setSummary(readSessionSummary());
+  }, []);
 
   return (
     <StudentShell noHeader>
@@ -64,7 +93,7 @@ export default function SessionSummary() {
           <motion.div variants={staggerItem} className="mt-6 grid grid-cols-3 gap-3">
             {[
               { v: String(progress.reviewed.length), l: "Kata Dipelajari", icon: FileText },
-              { v: `+${xpGain}`, l: "XP Sesuai", icon: Star },
+              { v: `+${xpGain}`, l: "XP Sesi Ini", icon: Star },
               { v: String(progress.streak), l: "Streak", icon: Flame },
             ].map((s, i) => (
               <motion.div

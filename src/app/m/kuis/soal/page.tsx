@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, AlertTriangle, ChevronRight, Check, X, Zap, Sparkles } from "lucide-react";
@@ -8,88 +8,104 @@ import { StudentShell } from "@/components/layout/StudentShell";
 import { Button } from "@/components/ui/Button";
 import { KanjiText } from "@/components/ui/KanjiText";
 import { AnimatedPage } from "@/components/ui/AnimatedPage";
+import { vocabulary } from "@/data/vocabulary";
 
-const soalList = [
-  {
-    id: 1,
-    kanji: "食べる",
-    furigana: "たべる",
-    question: "Apa arti kata di atas?",
-    options: [
-      { id: "A", text: "Makan" },
-      { id: "B", text: "Minum" },
-      { id: "C", text: "Tidur" },
-      { id: "D", text: "Berjalan" },
-    ],
-    correct: "A",
-  },
-  {
-    id: 2,
-    kanji: "飲む",
-    furigana: "のむ",
-    question: "Apa arti kata di atas?",
-    options: [
-      { id: "A", text: "Makan" },
-      { id: "B", text: "Minum" },
-      { id: "C", text: "Tidur" },
-      { id: "D", text: "Berjalan" },
-    ],
-    correct: "B",
-  },
-  {
-    id: 3,
-    kanji: "学校",
-    furigana: "がっこう",
-    question: "Apa arti kata di atas?",
-    options: [
-      { id: "A", text: "Rumah" },
-      { id: "B", text: "Toko" },
-      { id: "C", text: "Sekolah" },
-      { id: "D", text: "Kantor" },
-    ],
-    correct: "C",
-  },
-  {
-    id: 4,
-    kanji: "高い",
-    furigana: "たかい",
-    question: "Apa arti kata di atas?",
-    options: [
-      { id: "A", text: "Murah" },
-      { id: "B", text: "Tinggi/Mahal" },
-      { id: "C", text: "Cepat" },
-      { id: "D", text: "Pendek" },
-    ],
-    correct: "B",
-  },
-  {
-    id: 5,
-    kanji: "猫",
-    furigana: "ねこ",
-    question: "Apa arti kata di atas?",
-    options: [
-      { id: "A", text: "Anjing" },
-      { id: "B", text: "Burung" },
-      { id: "C", text: "Ikan" },
-      { id: "D", text: "Kucing" },
-    ],
-    correct: "D",
-  },
-];
+interface Soal {
+  id: number;
+  kanji: string;
+  furigana: string;
+  question: string;
+  options: { id: string; text: string }[];
+  correct: string;
+}
+
+export interface KuisSessionItem {
+  no: number;
+  q: string;
+  kanji: string;
+  furigana: string;
+  user: string;
+  correct: string;
+  ok: boolean;
+  exp: string;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Generate 10 soal pilihan ganda dari word bank N5 (arti kata). */
+function buildQuiz(): Soal[] {
+  const n5 = vocabulary.filter((w) => w.level === "N5" && w.arti.trim().length > 0);
+  const picked = shuffle(n5).slice(0, 10);
+  return picked.map((w, i) => {
+    // Distractor: arti berbeda dari kata-kata N5 lain.
+    const distractors = shuffle(
+      n5.filter(
+        (x) =>
+          x.kanji !== w.kanji &&
+          x.arti.toLowerCase() !== w.arti.toLowerCase(),
+      ),
+    )
+      .map((x) => x.arti)
+      .filter((a, idx, self) => self.indexOf(a) === idx)
+      .slice(0, 3);
+    // Pastikan selalu 3 distractor unik.
+    for (const candidate of n5) {
+      if (distractors.length >= 3) break;
+      const a = candidate.arti;
+      if (a !== w.arti && !distractors.includes(a)) distractors.push(a);
+    }
+    // Acak posisi opsi DULU, baru tetapkan id berdasarkan posisi,
+    // agar jawaban benar tidak selalu di posisi A.
+    const shuffled = shuffle([w.arti, ...distractors]);
+    const options = shuffled.map((text, idx) => ({
+      id: (["A", "B", "C", "D"] as const)[idx],
+      text,
+    }));
+    return {
+      id: i + 1,
+      kanji: w.kanji,
+      furigana: w.furigana,
+      question: "Apa arti kata di atas?",
+      options,
+      correct: options.find((o) => o.text === w.arti)?.id ?? "A",
+    };
+  });
+}
 
 const TIMER_DURATION = 45;
 
 export default function KuisSoal() {
   const router = useRouter();
+  const [soalList, setSoalList] = useState<Soal[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [time, setTime] = useState(TIMER_DURATION);
   const [timeoutTriggered, setTimeoutTriggered] = useState(false);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const answersRef = useRef<Record<number, string>>({});
+
+  // Generate soal di client setelah mount (menghindari hydration mismatch
+  // karena Math.random tidak boleh jalan saat render server).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: generate setelah mount.
+    setSoalList(buildQuiz());
+  }, []);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   const currentSoal = soalList[currentIndex];
   const answered = picked !== null || timeoutTriggered;
   const total = soalList.length;
-  const progress = ((currentIndex + 1) / total) * 100;
+  const progress = total > 0 ? ((currentIndex + 1) / total) * 100 : 0;
   const isLast = currentIndex === total - 1;
 
   // Countdown timer
@@ -114,7 +130,7 @@ export default function KuisSoal() {
     function handleKey(e: KeyboardEvent) {
       const keyMap: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D" };
       const optionId = keyMap[e.key];
-      if (optionId && currentSoal.options.find((o) => o.id === optionId)) {
+      if (currentSoal && optionId && currentSoal.options.find((o) => o.id === optionId)) {
         setPicked(optionId);
       }
     }
@@ -123,18 +139,63 @@ export default function KuisSoal() {
   }, [answered, currentSoal]);
 
   const handleNext = useCallback(() => {
+    if (!currentSoal) return;
+    const finalAnswer = picked ?? "";
+    const withCurrent = { ...answersRef.current, [currentSoal.id]: finalAnswer };
+    setAnswers(withCurrent);
+
     if (!isLast) {
       setCurrentIndex((i) => i + 1);
       setPicked(null);
       setTime(TIMER_DURATION);
       setTimeoutTriggered(false);
-    } else {
-      router.push("/m/kuis/review");
+      return;
     }
-  }, [isLast, router]);
+
+    // Selesai — susun hasil asli berdasarkan jawaban, simpan untuk halaman review.
+    const items: KuisSessionItem[] = soalList.map((s) => {
+      const user = withCurrent[s.id] ?? "";
+      const correctText = s.options.find((o) => o.id === s.correct)?.text ?? "";
+      const userText = s.options.find((o) => o.id === user)?.text ?? "Tidak dijawab";
+      return {
+        no: s.id,
+        q: "Apa arti kata di atas?",
+        kanji: s.kanji,
+        furigana: s.furigana,
+        user: userText,
+        correct: correctText,
+        ok: user === s.correct,
+        exp: `${s.kanji} (${s.furigana}) berarti "${correctText}".`,
+      };
+    });
+    const score = Math.round((items.filter((it) => it.ok).length / items.length) * 100);
+    const baseXP = items.filter((it) => it.ok).length * 10;
+    const bonusXP = score >= 80 ? 20 : score >= 60 ? 10 : 0;
+    try {
+      sessionStorage.setItem(
+        "lf-quiz-session",
+        JSON.stringify({ items, score, correctCount: items.filter((it) => it.ok).length, total: items.length, totalXP: baseXP + bonusXP }),
+      );
+    } catch {
+      /* sessionStorage unavailable */
+    }
+    router.push("/m/kuis/review");
+  }, [picked, currentSoal, isLast, soalList, router]);
 
   const timerPct = (time / TIMER_DURATION) * 100;
   const urgent = time <= 10;
+
+  if (soalList.length === 0) {
+    return (
+      <StudentShell title="Soal">
+        <AnimatedPage>
+          <div className="flex items-center justify-center py-20 text-sm text-ink-soft">
+            Menyiapkan soal&hellip;
+          </div>
+        </AnimatedPage>
+      </StudentShell>
+    );
+  }
 
   return (
     <StudentShell title="Soal">

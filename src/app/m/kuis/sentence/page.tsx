@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, Check, GripVertical, Sparkles, ArrowRight, Shuffle, X, Lightbulb } from "lucide-react";
@@ -22,10 +22,103 @@ import { CSS } from "@dnd-kit/utilities";
 import { StudentShell } from "@/components/layout/StudentShell";
 import { Button } from "@/components/ui/Button";
 import { AnimatedPage } from "@/components/ui/AnimatedPage";
+import { vocabulary } from "@/data/vocabulary";
 
-const POOL = ["ご飯", "を", "食べます", "が", "私は"];
-const CORRECT_WORDS = ["私は", "ご飯", "を", "食べます"];
-const CORRECT_SENTENCE = CORRECT_WORDS.join(" ");
+interface SentenceExercise {
+  prompt: string;       // arti yang harus disusun
+  pool: string[];       // kata yang bisa dipilih
+  correctWords: string[];
+  sentenceJp: string;   // Kalimat Jepang utuh untuk ditampilkan
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * Bangun latihan susun kalimat dari kata N5 acak.
+ *
+ * Strategi: gunakan template kalimat sederhana yang sudah diketahui strukturnya
+ * sehingga tokenisasi bersifat deterministik dan dapat diandalkan.
+ * Tiap template mendefinisikan: { jp, id, tokens } di mana tokens adalah
+ * potongan kata yang sudah jadi (bukan hasil tokenizer otomatis).
+ */
+function buildExercise(): SentenceExercise {
+  const candidates = vocabulary.filter((w) => w.level === "N5");
+  const pick = candidates[Math.floor(Math.random() * Math.max(1, candidates.length))];
+  if (!pick) {
+    return { prompt: "Buku", pool: ["これは", "本", "です"], correctWords: ["これは", "本", "です"], sentenceJp: "これは本です" };
+  }
+
+  const p = pick.pos ?? "";
+  const kanji = pick.kanji;
+  const arti = pick.arti.toLowerCase();
+
+  // Template kalimat berdasarkan part of speech, dengan token yang sudah ditentukan
+  interface Template {
+    jp: string;
+    tokens: string[];
+  }
+
+  const templates: Template[] = [];
+
+  // Kata benda: ここに[kanji]があります / [kanji]が好きです / これは[kanji]です
+  if (p.startsWith("n")) {
+    templates.push(
+      { jp: `ここに${kanji}があります`, tokens: ["ここに", kanji, "が", "あります"] },
+      { jp: `${kanji}が好きです`, tokens: [kanji, "が", "好き", "です"] },
+      { jp: `これは${kanji}です`, tokens: ["これは", kanji, "です"] },
+    );
+  }
+
+  // Kata kerja: 毎日[kanji]ます / [kanji]ましょう
+  if (p.startsWith("v")) {
+    templates.push(
+      { jp: `毎日${kanji}ます`, tokens: ["毎日", kanji, "ます"] },
+      { jp: `${kanji}ましょう`, tokens: [kanji, "ましょう"] },
+    );
+  }
+
+  // Kata sifat: とても[kanji]です
+  if (p.startsWith("adj-i")) {
+    templates.push(
+      { jp: `とても${kanji}です`, tokens: ["とても", kanji, "です"] },
+    );
+  }
+  if (p.startsWith("adj-na")) {
+    templates.push(
+      { jp: `${kanji}です`, tokens: [kanji, "です"] },
+    );
+  }
+
+  // Fallback: selalu punya template dasar
+  templates.push(
+    { jp: `${kanji}が好きです`, tokens: [kanji, "が", "好き", "です"] },
+  );
+
+  // Pilih template acak dari yang tersedia
+  const tpl = templates[Math.floor(Math.random() * templates.length)];
+  const sentenceJp = tpl.jp;
+  const correctWords = tpl.tokens;
+
+  // Prompt dalam bahasa Indonesia
+  const prompt = arti;
+
+  // Tambah 1 distractor dari kata N5 lain yang tidak ada di kalimat
+  const distractor = shuffle(candidates).find((w) => {
+    const kw = w.kanji;
+    return !correctWords.includes(kw) && kw.length >= 1 && kw.length <= 3;
+  });
+  const distractors = distractor ? [distractor.kanji] : [];
+
+  const pool = shuffle([...correctWords, ...distractors]);
+  return { prompt, pool, correctWords, sentenceJp };
+}
 
 // ─── Sortable chip for drag-to-reorder ───
 function SortableChip({
@@ -82,9 +175,24 @@ function SortableChip({
 // ─── Main component ───
 export default function SentenceBuilder() {
   const router = useRouter();
+  const [exercise, setExercise] = useState<SentenceExercise | null>(null);
+
   const [answer, setAnswer] = useState<string[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [hintShown, setHintShown] = useState(false);
+
+  // Bangun latihan di client setelah mount (Math.random saat render server
+  // bisa menyebabkan hydration mismatch).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: generate setelah mount.
+    setExercise(buildExercise());
+  }, []);
+
+  const POOL = exercise?.pool ?? [];
+  // Bungkus dalam useMemo agar referensi stabil untuk dependensi useMemo lain.
+  const CORRECT_WORDS = useMemo(() => exercise?.correctWords ?? [], [exercise]);
+  const CORRECT_SENTENCE = CORRECT_WORDS.join(" ");
+  const prompt = exercise?.prompt ?? "";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -135,16 +243,52 @@ export default function SentenceBuilder() {
         correctPosition: CORRECT_WORDS[i] === w,
         exists: CORRECT_WORDS.includes(w),
       })),
-    [answer],
+    [answer, CORRECT_WORDS],
   );
 
   const correctCount = wordResults.filter((r) => r.correctPosition).length;
 
+  /** Simpan hasil ke sessionStorage agar halaman review menampilkan data asli. */
+  function finish() {
+    if (!exercise) return;
+    try {
+      const items = [
+        {
+          no: 1,
+          q: `Buat kalimat: "${exercise.prompt}"`,
+          kanji: exercise.sentenceJp,
+          furigana: "",
+          user: answer.join(" ") || "Tidak dijawab",
+          correct: CORRECT_SENTENCE,
+          ok: correct,
+          exp: `Susunan yang benar: ${exercise.sentenceJp} — ${exercise.prompt}.`,
+        },
+      ];
+      const okCount = correct ? 1 : 0;
+      const score = correct ? 100 : 0;
+      sessionStorage.setItem(
+        "lf-quiz-session",
+        JSON.stringify({ items, score, correctCount: okCount, total: 1, totalXP: correct ? 20 : 0 }),
+      );
+    } catch {
+      /* sessionStorage unavailable */
+    }
+    router.push("/m/kuis/review");
+  }
+
   return (
     <StudentShell noHeader>
       <AnimatedPage>
+        {!exercise && (
+          <div className="flex items-center justify-center py-20 text-sm text-ink-soft">
+            Menyiapkan latihan&hellip;
+          </div>
+        )}
+
+        {exercise && (
+        <>
         {/* ════════════════════════════════════════ */}
-        {/* PREMIUM PROGRESS */}
+        {/* PREMIUM PROGRESS — latihan tunggal */}
         {/* ════════════════════════════════════════ */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
@@ -152,22 +296,12 @@ export default function SentenceBuilder() {
               <motion.div
                 className="h-full rounded-full bg-gradient-to-r from-vermillion to-vermillion-soft"
                 initial={{ width: "0%" }}
-                animate={{ width: "60%" }}
+                animate={{ width: "100%" }}
                 transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
               />
             </div>
-            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-0.5">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <span
-                  key={i}
-                  className={`block h-1.5 w-1.5 rounded-full transition-colors ${
-                    i < 6 ? "bg-white" : "bg-indigo-tint-soft"
-                  }`}
-                />
-              ))}
-            </div>
           </div>
-          <span className="text-xs font-bold text-ink-soft">Soal 6 dari 10</span>
+          <span className="text-xs font-bold text-ink-soft">Latihan Menyusun Kalimat</span>
         </div>
 
         {/* ════════════════════════════════════════ */}
@@ -185,7 +319,7 @@ export default function SentenceBuilder() {
           </div>
           <p className="text-base font-bold text-ink">
             Buat kalimat dari:{" "}
-            <span className="text-indigo">&ldquo;Saya makan nasi&rdquo;</span>
+            <span className="text-indigo">&ldquo;{prompt}&rdquo;</span>
           </p>
           <p className="mt-1 text-xs text-ink-soft">Seret kata untuk mengubah urutan</p>
         </motion.div>
@@ -418,13 +552,13 @@ export default function SentenceBuilder() {
                       <p className="mb-3 text-xs font-bold tracking-wider uppercase text-ink-soft">
                         Posisi yang benar:
                       </p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                         {CORRECT_WORDS.map((w, i) => {
                           const userWord = answer[i];
                           const isRight = userWord === w;
                           return (
                             <div
-                              key={w}
+                              key={`${w}-${i}`}
                               className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
                                 isRight
                                   ? "border-success/30 bg-success/5"
@@ -458,7 +592,7 @@ export default function SentenceBuilder() {
                   <Button
                     fullWidth
                     variant="outline"
-                    onClick={() => router.push("/m/kuis/review")}
+                    onClick={finish}
                   >
                     Lanjut ke Review <ArrowRight size={16} className="ml-1" />
                   </Button>
@@ -467,6 +601,8 @@ export default function SentenceBuilder() {
             )}
           </AnimatePresence>
         </div>
+        </>
+        )}
       </AnimatedPage>
     </StudentShell>
   );
