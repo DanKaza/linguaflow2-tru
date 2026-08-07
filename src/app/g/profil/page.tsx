@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -20,15 +21,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useTheme } from "@/lib/theme";
-
-const stats = [
-  { v: "3", l: "Kelas Diajar", icon: Users },
-  { v: "84", l: "Total Murid", icon: ClipboardList },
-  { v: "12", l: "Tugas Aktif", icon: FileQuestion },
-  { v: "78%", l: "Rata² Skor", icon: Award },
-];
-
-const subjects = ["XII RPL 1", "XII RPL 2", "XI TKJ 1"];
+import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
 
 const settings = [
   { icon: Pencil, label: "Edit Profil", desc: "Nama, foto, biodata" },
@@ -40,8 +34,66 @@ const settings = [
 
 export default function TeacherProfile() {
   const router = useRouter();
+  const supabase = createClient();
+  const { profile: teacherProfile } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
   const dark = theme === "dark";
+
+  const [classCount, setClassCount] = useState(0);
+  const [studentCount, setStudentCount] = useState(0);
+  const [classNames, setClassNames] = useState<string[]>([]);
+  const [schoolName, setSchoolName] = useState("Sekolah");
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  useEffect(() => {
+    if (!teacherProfile?.id) return;
+
+    async function load() {
+      if (!teacherProfile?.id) return;
+
+      // 1) Ambil kelas yang diajar guru ini
+      const { data: classes } = await supabase
+        .from("classes")
+        .select("id, name, code")
+        .eq("teacher_id", teacherProfile.id);
+
+      const names = (classes || []).map((c: any) => c.name);
+      setClassNames(names);
+      setClassCount(names.length);
+
+      // 2) Hitung total murid di kelas-kelas ini
+      if (classes && classes.length > 0) {
+        const codes = classes.map((c: any) => c.code);
+        const { count } = await supabase
+          .from("profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "murid")
+          .in("class_code", codes);
+        setStudentCount(count ?? 0);
+      }
+
+      // 3) Ambil nama sekolah
+      if (teacherProfile.school_id) {
+        const { data: school } = await supabase
+          .from("schools")
+          .select("name")
+          .eq("id", teacherProfile.school_id)
+          .maybeSingle();
+        if (school?.name) setSchoolName(school.name);
+      }
+
+      setLoadingStats(false);
+    }
+
+    load();
+  }, [teacherProfile?.id, teacherProfile?.school_id, supabase]);
+
+  const stats = [
+    { v: String(classCount), l: "Kelas Diajar", icon: Users },
+    { v: String(studentCount), l: "Total Murid", icon: ClipboardList },
+    { v: "—", l: "Tugas Aktif", icon: FileQuestion },
+    { v: "—", l: "Rata² Skor", icon: Award },
+  ];
 
   return (
     <AnimatedPage>
@@ -53,7 +105,7 @@ export default function TeacherProfile() {
             whileHover={{ scale: 1.03 }}
             transition={{ type: "spring", stiffness: 200 }}
           >
-            <Avatar name="Bu Siti Rahma" size={88} />
+            <Avatar name={teacherProfile?.full_name ?? "Guru"} size={88} />
             <motion.button
               whileTap={{ scale: 0.85 }}
               className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-paper bg-indigo text-white shadow-soft transition-colors hover:bg-indigo-tint"
@@ -68,7 +120,7 @@ export default function TeacherProfile() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
           >
-            Bu Siti Rahma
+            {teacherProfile?.full_name ?? "Guru"}
           </motion.h1>
           <motion.p
             className="text-sm text-ink-soft"
@@ -76,14 +128,20 @@ export default function TeacherProfile() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
           >
-            Guru Bahasa Jepang · SMK Texar
+            Guru · {schoolName}
           </motion.p>
           <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-            {subjects.map((s) => (
-              <Badge key={s} tone="soft">
-                {s}
-              </Badge>
-            ))}
+            {loadingStats ? (
+              <span className="text-xs text-ink-soft">Memuat kelas...</span>
+            ) : classNames.length > 0 ? (
+              classNames.map((s) => (
+                <Badge key={s} tone="soft">
+                  {s}
+                </Badge>
+              ))
+            ) : (
+              <Badge tone="soft">Belum mengajar kelas</Badge>
+            )}
           </div>
         </motion.div>
 

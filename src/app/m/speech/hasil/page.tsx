@@ -1,135 +1,319 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { RotateCcw, ArrowRight, Sparkles } from "lucide-react";
+import { RotateCcw, Mic, Volume2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { RingProgress } from "@/components/ui/ProgressBar";
-import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
+import { KanjiText } from "@/components/ui/KanjiText";
+import { AnimatedPage } from "@/components/ui/AnimatedPage";
+import { useJapaneseSpeech } from "@/lib/speech";
+import { normalizeSpeechWithMap, scoreLabel, type NormalizedSpeech } from "@/lib/scoring";
 
-const subscores = [
-  { label: "Kejelasan", value: 90, color: "indigo" as const },
-  { label: "Intonasi", value: 78, color: "gold" as const },
-  { label: "Kelancaran", value: 88, color: "success" as const },
-];
+interface ScorePayload {
+  score: number;
+  target: string;
+  transcript: string;
+  exact: boolean;
+}
 
-const words = [
-  { w: "私は", tone: "success" },
-  { w: "学生", tone: "success" },
-  { w: "です", tone: "gold" },
-];
+interface SpeechResult {
+  sentence: {
+    kanji: string;
+    furigana: string;
+    romaji: string;
+    arti: string;
+  };
+  transcript: string;
+  score: ScorePayload;
+}
+
+/** Posisi segmen yang berbeda antara dua string ternormalisasi. */
+function diffRange(target: string, transcript: string) {
+  let p = 0;
+  const min = Math.min(target.length, transcript.length);
+  while (p < min && target[p] === transcript[p]) p++;
+  let s = 0;
+  while (
+    s < min - p &&
+    target[target.length - 1 - s] === transcript[transcript.length - 1 - s]
+  ) {
+    s++;
+  }
+  return {
+    targetStart: p,
+    targetEnd: target.length - s,
+    transcriptStart: p,
+    transcriptEnd: transcript.length - s,
+  };
+}
+
+function ringColor(score: number): string {
+  if (score >= 85) return "var(--color-success)";
+  if (score >= 70) return "var(--color-gold)";
+  return "var(--color-vermillion)";
+}
+
+function Highlighted({
+  text,
+  start,
+  end,
+  tone,
+}: {
+  text: string;
+  start: number;
+  end: number;
+  tone: "error" | "gold";
+}) {
+  return (
+    <>
+      <span className="text-success">{text.slice(0, start)}</span>
+      <span
+        className={
+          tone === "error"
+            ? "rounded bg-error/15 font-semibold text-error"
+            : "rounded bg-gold/20 font-semibold text-gold"
+        }
+      >
+        {text.slice(start, end)}
+      </span>
+      <span className="text-success">{text.slice(end)}</span>
+    </>
+  );
+}
 
 export default function SpeechResult() {
   const router = useRouter();
+  const { speak } = useJapaneseSpeech();
+
+  const [result, setResult] = useState<SpeechResult | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let parsed: SpeechResult | null = null;
+    try {
+      const raw = sessionStorage.getItem("lf-speech-result");
+      parsed = raw ? (JSON.parse(raw) as SpeechResult) : null;
+    } catch {
+      parsed = null;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: sessionStorage hanya ada di client.
+    setResult(parsed);
+    setLoaded(true);
+  }, []);
+
+  // Belum ada hasil — tampilkan state kosong seperti sebelumnya.
+  if (loaded && !result) {
+    return (
+      <StudentShell noHeader>
+        <AnimatedPage>
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative mt-10 flex flex-col items-center overflow-hidden rounded-card border border-line bg-paper py-14 text-center"
+          >
+            <span className="lf-kanji-watermark pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 text-[140px]">評</span>
+            <div className="seigaiha absolute inset-0 opacity-[0.05]" />
+            <div className="relative">
+              <span className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint-soft">
+                <Mic size={30} className="text-indigo/40" />
+              </span>
+              <p className="text-base font-bold text-ink">Belum ada hasil evaluasi</p>
+              <p className="mx-auto mt-1 max-w-[16rem] text-xs text-ink-soft">
+                Rekam ucapanmu di Latihan Ucapan untuk melihat skor pelafalan.
+              </p>
+              <div className="mt-6 flex justify-center">
+                <Button variant="outline" onClick={() => router.push("/m/speech")}>
+                  <RotateCcw size={18} /> Mulai Latihan Ucapan
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatedPage>
+      </StudentShell>
+    );
+  }
+
+  // Belum selesai baca sessionStorage — hindari flash halaman kosong.
+  if (!loaded || !result) {
+    return (
+      <StudentShell noHeader>
+        <div className="flex items-center justify-center py-20 text-sm text-ink-soft">
+          Memuat hasil…
+        </div>
+      </StudentShell>
+    );
+  }
+
+  const { sentence, transcript, score } = result;
+  // Highlight dihitung pada teks ternormalisasi, tapi DITAMPILKAN pada teks
+  // asli — supaya murid tidak melihat は berubah jadi わ di tampilan.
+  const rawTarget = sentence.furigana;
+  const rawTranscript = transcript;
+  const tNorm = normalizeSpeechWithMap(rawTarget);
+  const trNorm = normalizeSpeechWithMap(rawTranscript);
+  const exact = tNorm.normalized === trNorm.normalized;
+  const diff = diffRange(tNorm.normalized, trNorm.normalized);
+  const color = ringColor(score.score);
+
+  /** Terjemahkan rentang indeks ternormalisasi → rentang di teks asli. */
+  function toRawRange(
+    norm: NormalizedSpeech,
+    rawLen: number,
+    start: number,
+    end: number,
+  ) {
+    return {
+      start: start < norm.map.length ? norm.map[start] : rawLen,
+      end:
+        end === norm.normalized.length
+          ? rawLen
+          : end > 0
+            ? norm.map[end - 1] + 1
+            : 0,
+    };
+  }
+  const targetRange = toRawRange(
+    tNorm,
+    rawTarget.length,
+    diff.targetStart,
+    diff.targetEnd,
+  );
+  const transcriptRange = toRawRange(
+    trNorm,
+    rawTranscript.length,
+    diff.transcriptStart,
+    diff.transcriptEnd,
+  );
 
   return (
     <StudentShell noHeader>
       <AnimatedPage>
-        <motion.div variants={staggerContainer} initial="initial" animate="animate">
-          {/* Score hero */}
-          <motion.div variants={staggerItem} className="flex flex-col items-center pt-4 text-center">
-            <motion.div
-              initial={{ scale: 0.6, opacity: 0, rotate: -10 }}
-              animate={{ scale: 1, opacity: 1, rotate: 0 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
-            >
-              <RingProgress value={85} size={130} color="success">
-                <span className="text-4xl font-bold text-indigo">85</span>
-              </RingProgress>
-            </motion.div>
-            <motion.h1
-              className="mt-3 text-2xl font-bold text-ink"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-            >
-              Bagus! <Sparkles size={28} className="inline text-gold ml-1" />
-            </motion.h1>
-            <span className="mt-1 inline-block rounded-full bg-gold/15 px-2.5 py-0.5 text-[10px] font-bold text-[#9a6b16]">MODE DEMO — SKOR CONTOH</span>
-          </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <h1 className="text-2xl font-bold text-ink">Hasil Evaluasi</h1>
+          <p className="text-sm text-ink-soft">Skor pelafalan ucapanmu</p>
+        </motion.div>
 
-          {/* Subscores with animated bars */}
-          <div className="mt-5 space-y-4">
-            {subscores.map((s, i) => (
-              <motion.div
-                key={s.label}
-                initial={{ opacity: 0, x: -12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 + i * 0.1, duration: 0.4 }}
-              >
-                <div className="mb-1.5 flex justify-between text-sm">
-                  <span className="font-semibold text-ink">{s.label}</span>
-                  <motion.span
-                    className="font-bold text-indigo"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.4 + i * 0.1 }}
-                  >
-                    {s.value}%
-                  </motion.span>
-                </div>
-                <div className="h-2.5 w-full rounded-full bg-indigo-tint-soft overflow-hidden">
-                  <motion.div
-                    className={
-                      "h-2.5 rounded-full " +
-                      (s.color === "indigo" ? "bg-indigo" : s.color === "gold" ? "bg-gold" : "bg-success")
-                    }
-                    initial={{ width: "0%" }}
-                    animate={{ width: `${s.value}%` }}
-                    transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.35 + i * 0.1 }}
-                  />
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Detailed analysis */}
-          <motion.div
-            variants={staggerItem}
-            className="mt-5 grid gap-3"
+        {/* Ring skor */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.45, delay: 0.1, type: "spring", bounce: 0.35 }}
+          className="mt-6 flex flex-col items-center"
+        >
+          <div
+            className="relative h-40 w-40 rounded-full"
+            style={{
+              background: `conic-gradient(${color} ${score.score * 3.6}deg, var(--color-line) 0deg)`,
+            }}
           >
-            <Card className="text-center transition-all hover:shadow-soft-lg" padded>
-              <p className="jp text-2xl text-indigo">
-                {words.map((x) => (
-                  <span
-                    key={x.w}
-                    className={
-                      "mx-0.5 transition-colors " +
-                      (x.tone === "success"
-                        ? "text-success"
-                        : "text-gold underline decoration-dotted underline-offset-4")
-                    }
-                  >
-                    {x.w}
+            <div className="absolute inset-[6px] flex flex-col items-center justify-center rounded-full bg-paper shadow-soft">
+              <span className="text-5xl font-bold text-ink tabular-nums">{score.score}</span>
+              <span className="text-xs text-ink-soft">/ 100</span>
+            </div>
+          </div>
+          <p className="mt-4 text-base font-bold text-ink">{scoreLabel(score.score)}</p>
+          {exact && (
+            <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-success">
+              <CheckCircle2 size={14} /> Pelafalan sempurna!
+            </p>
+          )}
+        </motion.div>
+
+        {/* Kalimat target */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          <div className="mt-6 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-ink">Kalimat target</h2>
+            <button
+              onClick={() => speak(sentence.kanji, { key: "result", kana: sentence.furigana })}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo transition-colors hover:text-indigo-tint"
+            >
+              <Volume2 size={14} /> Dengar
+            </button>
+          </div>
+          <div className="mt-2 rounded-card border border-line bg-paper p-5 text-center">
+            <KanjiText
+              kanji={sentence.kanji}
+              furigana={sentence.furigana}
+              romaji={sentence.romaji}
+              size="md"
+            />
+            <p className="mt-2 text-xs text-ink-soft">{sentence.arti}</p>
+          </div>
+        </motion.div>
+
+        {/* Ucapanmu */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+        >
+          <h2 className="mt-5 text-sm font-bold text-ink">Yang terdeteksi</h2>
+          <div className="mt-2 rounded-card border border-line bg-paper p-5">
+            <p lang="ja" className="jp text-center text-xl text-ink">
+              {transcript}
+            </p>
+
+            {!exact && (
+              <div className="mt-4 space-y-2 border-t border-line pt-4 text-center text-sm leading-relaxed">
+                <div>
+                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                    Target (kana)
                   </span>
-                ))}{" "}
-                です
-              </p>
-            </Card>
+                  <span lang="ja" className="jp">
+                    <Highlighted
+                      text={rawTarget}
+                      start={targetRange.start}
+                      end={targetRange.end}
+                      tone="error"
+                    />
+                  </span>
+                </div>
+                <div>
+                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                    Ucapanmu
+                  </span>
+                  <span lang="ja" className="jp">
+                    <Highlighted
+                      text={rawTranscript}
+                      start={transcriptRange.start}
+                      end={transcriptRange.end}
+                      tone="gold"
+                    />
+                  </span>
+                </div>
+                <p className="pt-1 text-[11px] text-ink-soft">
+                  <span className="font-semibold text-error">Merah</span> = bagian yang berbeda dari target ·{" "}
+                  <span className="font-semibold text-gold">kuning</span> = yang terdeteksi di sana
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.div>
 
-            <Card className="border-l-4 border-l-indigo transition-all hover:shadow-soft-lg" padded>
-              <p className="text-sm text-ink">
-                Pengucapan <span className="jp font-semibold">です</span> di akhir kalimat perlu lebih jelas,
-                coba ulangi dengan penekanan di &ldquo;su&rdquo;.
-              </p>
-            </Card>
-          </motion.div>
-
-          {/* Actions */}
-          <motion.div variants={staggerItem} className="mt-6 grid grid-cols-2 gap-3">
-            <motion.div whileTap={{ scale: 0.97 }}>
-              <Button variant="outline" size="lg" onClick={() => router.push("/m/speech")}>
-                <RotateCcw size={18} /> Coba Lagi
-              </Button>
-            </motion.div>
-            <motion.div whileTap={{ scale: 0.97 }}>
-              <Button size="lg" onClick={() => router.push("/m/speech")}>
-                Kalimat Berikut <ArrowRight size={18} />
-              </Button>
-            </motion.div>
-          </motion.div>
+        {/* Aksi */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.4 }}
+          className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2"
+        >
+          <Button variant="outline" size="lg" onClick={() => router.push("/m/speech")}>
+            <RotateCcw size={18} /> Rekam Ulang
+          </Button>
+          <Button size="lg" onClick={() => router.push("/m/dashboard")}>
+            <ArrowLeft size={18} /> Selesai
+          </Button>
         </motion.div>
       </AnimatedPage>
     </StudentShell>

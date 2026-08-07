@@ -10,36 +10,62 @@ import { Button } from "@/components/ui/Button";
 import { AnimatedPage } from "@/components/ui/AnimatedPage";
 import { useLocalStorage } from "@/lib/use-local-storage";
 import { useProgress, recordStudy, queueReview, markMastered, type SrsItem } from "@/lib/progress";
+import { vocabulary } from "@/data/vocabulary";
+import type { VocabularyWord } from "@/lib/types";
+import { makeJapaneseSentence } from "@/lib/utils";
 
-const cards = [
-  {
-    kanji: "食べる",
-    furigana: "たべる",
-    romaji: "taberu",
-    arti: "Makan",
-    contoh: "ご飯を食べる",
-    contohId: "Gohan wo taberu — Makan nasi",
-    group: "Group 2 (ichidan)",
-  },
-  {
-    kanji: "飲む",
-    furigana: "のむ",
-    romaji: "nomu",
-    arti: "Minum",
-    contoh: "水を飲む",
-    contohId: "Mizu wo nomu — Minum air",
-    group: "Group 1 (godan)",
-  },
-  {
-    kanji: "行く",
-    furigana: "いく",
-    romaji: "iku",
-    arti: "Pergi",
-    contoh: "学校へ行く",
-    contohId: "Gakkou e iku — Pergi ke sekolah",
-    group: "Group 1 (godan)",
-  },
-];
+const SESSION_SIZE = 20;
+
+interface FlashCard {
+  kanji: string;
+  furigana: string;
+  romaji: string;
+  arti: string;
+  contoh: string;
+  contohId: string;
+  group: string;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function groupLabel(w: VocabularyWord): string {
+  const p = w.pos ?? "";
+  if (p.startsWith("v")) return "Kata Kerja";
+  if (p.startsWith("adj") || p.startsWith("a-")) return "Kata Sifat";
+  if (p.startsWith("n")) return "Kata Benda";
+  if (p.startsWith("prt")) return "Partikel";
+  return "Kosakata";
+}
+
+/** Contoh kalimat sederhana berbasis part of speech. */
+function makeExample(w: VocabularyWord): { contoh: string; contohId: string } {
+  const ex = makeJapaneseSentence(w);
+  return { contoh: ex.jp, contohId: ex.id };
+}
+
+/** Ambil 20 kata N5 acak dari word bank → kartu sesi. */
+function buildSessionCards(): FlashCard[] {
+  const pool = shuffle(vocabulary.filter((w) => w.level === "N5"));
+  return pool.slice(0, SESSION_SIZE).map((w) => {
+    const ex = makeExample(w);
+    return {
+      kanji: w.kanji,
+      furigana: w.furigana,
+      romaji: w.romaji,
+      arti: w.arti,
+      contoh: ex.contoh,
+      contohId: ex.contohId,
+      group: groupLabel(w),
+    };
+  });
+}
 
 /** Simulate card exit direction for animation */
 type ExitDir = "left" | "right" | null;
@@ -49,6 +75,13 @@ export default function FlashcardSession() {
   const [bookmarked, setBookmarked] = useLocalStorage<string[]>("lf-flashcard-bookmarks", []);
   const [progress, setProgress] = useProgress();
 
+  const [cards, setCards] = useState<FlashCard[]>([]);
+  // Generate kartu di client setelah mount (Math.random tidak boleh jalan
+  // saat render server agar tidak terjadi hydration mismatch).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: generate setelah mount.
+    setCards(buildSessionCards());
+  }, []);
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [exitDir, setExitDir] = useState<ExitDir>(null);
@@ -59,6 +92,7 @@ export default function FlashcardSession() {
 
   const nextCard = useCallback(
     (knew: boolean) => {
+      if (!card) return;
       setExitDir(knew ? "right" : "left");
       setExiting(true);
       setDecisions((d) => ({ ...d, [card.kanji]: knew }));
@@ -85,6 +119,17 @@ export default function FlashcardSession() {
             }
           });
           setProgress(next);
+
+          // Simpan ringkasan sesi agar halaman ringkasan menampilkan angka asli.
+          const xpGain = learned.length * 20;
+          try {
+            sessionStorage.setItem(
+              "lf-session-summary",
+              JSON.stringify({ studied: cards.length, xpGain }),
+            );
+          } catch {
+            /* sessionStorage unavailable — ringkasan akan pakai fallback */
+          }
           router.push("/m/belajar/ringkasan");
           return;
         }
@@ -94,7 +139,7 @@ export default function FlashcardSession() {
         setExitDir(null);
       }, 250);
     },
-    [card, idx, total, decisions, progress, router, setProgress],
+    [card, idx, total, decisions, progress, router, setProgress, cards],
   );
 
   /** Swipe handler (framer-motion drag) */
@@ -118,6 +163,18 @@ export default function FlashcardSession() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [nextCard, exiting]);
+
+  if (cards.length === 0) {
+    return (
+      <StudentShell title="Sesi Belajar">
+        <AnimatedPage>
+          <div className="flex items-center justify-center py-20 text-sm text-ink-soft">
+            Menyiapkan kartu&hellip;
+          </div>
+        </AnimatedPage>
+      </StudentShell>
+    );
+  }
 
   return (
     <StudentShell title="Sesi Belajar">

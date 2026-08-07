@@ -17,40 +17,24 @@ import {
 import { StudentShell } from "@/components/layout/StudentShell";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { ProgressBar } from "@/components/ui/ProgressBar";
-import { Badge } from "@/components/ui/Badge";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useTimeGreeting } from "@/lib/time-greeting";
 import { useProgress, babProgress } from "@/lib/progress";
-import { useSchool, openTasksForClass } from "@/lib/school";
+import { useAuth } from "@/lib/auth-context";
 
 const quickActions = [
   { label: "Kuis Harian", icon: ListChecks, href: "/m/kuis", desc: "Uji pemahaman" },
-  { label: "Kamus", icon: BookText, href: "/m/kamus", desc: "3.200+ kata" },
+  { label: "Kamus", icon: BookText, href: "/m/kamus", desc: "Kosakata JLPT" },
   { label: "AI Sensei", icon: MessageCircle, href: "/m/sensei", desc: "Tanya grammar" },
   { label: "Latihan Ucapan", icon: Mic, href: "/m/speech", desc: "Speech AI" },
 ];
 
-const STUDENT_CLASS = "xii-rpl-1";
-
-function dueLabel(deadline: string): { text: string; urgent: boolean } {
-  const today = new Date();
-  const due = new Date(deadline + "T00:00:00");
-  const diff = Math.round((due.getTime() - today.getTime()) / 86_400_000);
-  if (diff <= 1) return { text: diff === 0 ? "Hari ini" : "Besok", urgent: true };
-  if (diff <= 7) return { text: `${diff} hari lagi`, urgent: false };
-  return { text: new Date(deadline).toLocaleDateString("id-ID", { day: "numeric", month: "short" }), urgent: false };
-}
-
 export default function StudentDashboard() {
   const timeGreeting = useTimeGreeting();
+  const { profile } = useAuth();
   const [progress] = useProgress();
-  const [school] = useSchool();
-  const tasks = openTasksForClass(school, STUDENT_CLASS).map((t) => {
-    const d = dueLabel(t.deadline);
-    return { title: t.title, teacher: t.teacher, due: d.text, urgent: d.urgent };
-  });
+
+  const firstName = (profile?.full_name || "Murid").trim().split(/\s+/)[0] || "Murid";
 
   return (
     <StudentShell noHeader>
@@ -83,20 +67,22 @@ export default function StudentDashboard() {
                     </span>
                     <div>
                       <p className="text-xs font-semibold text-white/70">{timeGreeting.greeting}</p>
-                      <p className="text-sm font-bold leading-tight">Ahmad! {timeGreeting.jpGreeting}</p>
+                      <p className="text-sm font-bold leading-tight">{firstName}! {timeGreeting.jpGreeting}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold">
-                      N5 · Bab 3
-                    </span>
+                    {profile?.class_code && (
+                      <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold">
+                        {profile.class_code}
+                      </span>
+                    )}
                     <NotificationBell size={20} color="text-white" />
                   </div>
                 </div>
 
                 {/* Main CTA */}
                 <div className="mt-4">
-                  <h2 className="text-lg font-bold">Flashcard N5 — Kata Kerja</h2>
+                  <h2 className="text-lg font-bold">Lanjutkan Belajar</h2>
                   <div className="mt-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-white/70">Progress Bab</span>
@@ -180,35 +166,20 @@ export default function StudentDashboard() {
             </Card>
           </motion.div>
 
-          {/* Pending tasks with stagger */}
+          {/* Pending tasks — honest empty state until teacher data is linked */}
           <motion.section variants={staggerItem} className="mt-6">
             <h2 className="lf-section-rule mb-4 flex items-center gap-2 text-base font-bold text-ink">
               <Clock size={18} className="text-indigo" /> Tugas Pending
-              <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-bold text-gold">CONTOH</span>
             </h2>
-            <div className="space-y-3">
-              {tasks.map((t, i) => (
-                <motion.div
-                  key={t.title}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.4, delay: 0.3 + i * 0.12, ease: [0.16, 1, 0.3, 1] }}
-                >
-                  <Card className="flex items-center gap-3 transition-all hover:shadow-soft-lg" padded>
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-btn bg-indigo-tint-soft">
-                      <BookOpen size={18} className="text-indigo" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-ink">{t.title}</p>
-                      <p className="text-xs text-ink-soft">{t.teacher}</p>
-                    </div>
-                    <div className="text-right">
-                      <Badge tone={t.urgent ? "vermillion" : "neutral"}>{t.due}</Badge>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
+            <Card className="flex items-center gap-3 py-5" padded>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-btn bg-indigo-tint-soft">
+                <Bell size={18} className="text-indigo" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-ink">Belum ada tugas</p>
+                <p className="text-xs text-ink-soft">Tugas dari guru akan muncul di sini.</p>
+              </div>
+            </Card>
           </motion.section>
 
           {/* Quick actions */}

@@ -1,52 +1,88 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Layers, FileCheck, Users } from "lucide-react";
+import { Check, Layers, FileCheck, Users, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { useSchool, type SchoolTask } from "@/lib/school";
+import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
+import { createTask } from "./actions";
 
 const steps = ["Jenis", "Materi", "Target", "Deadline", "Preview"];
 
-const classMap: { name: string; id: string }[] = [
-  { name: "XII RPL 1", id: "xii-rpl-1" },
-  { name: "XII RPL 2", id: "xii-rpl-2" },
-  { name: "XI TKJ 1", id: "xi-tkj-1" },
-];
-
 export default function AssignTaskWizard() {
   const router = useRouter();
-  const [school, setSchool] = useSchool();
+  const supabase = createClient();
+  const { profile: teacherProfile } = useAuth();
+
+  const [classes, setClasses] = useState<{ code: string; name: string }[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [fError, setFError] = useState<string | null>(null);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+
   const [step, setStep] = useState(1);
   const [type, setType] = useState<"flashcard" | "kuis" | null>(null);
   const [level, setLevel] = useState("N5");
   const [category, setCategory] = useState("Kata Kerja");
   const [target, setTarget] = useState("20");
   const [duration, setDuration] = useState("15");
-  const [deadline, setDeadline] = useState("2026-07-20");
-  const [selectedClass, setSelectedClass] = useState<string | null>("XII RPL 1");
+  const [deadline, setDeadline] = useState(
+    new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+  );
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
 
-  function handleSubmit() {
+  useEffect(() => {
+    const teacherId = teacherProfile?.id;
+    if (!teacherId) return;
+
+    async function load() {
+      setLoadingClasses(true);
+      const { data: kelasRaw } = await supabase
+        .from("classes")
+        .select("code, name")
+        .eq("teacher_id", teacherId)
+        .order("name");
+
+      const clsList = (kelasRaw || []).map((k: any) => ({
+        code: k.code,
+        name: k.name,
+      }));
+      setClasses(clsList);
+      if (clsList.length > 0) setSelectedClass(clsList[0].name);
+      setLoadingClasses(false);
+    }
+
+    load();
+  }, [teacherProfile?.id, supabase]);
+
+  async function handleSubmit() {
     if (!type || !selectedClass) return;
-    const cls = classMap.find((c) => c.name === selectedClass)!;
-    const task: SchoolTask = {
-      id: `t-${Date.now()}`,
-      title: type === "kuis" ? `Kuis ${category} ${level}` : `Hafalan ${target} Kata ${level}`,
-      type,
-      classId: cls.id,
-      className: cls.name,
-      level,
-      category,
-      target: Number(target) || 10,
-      duration: Number(duration) || 15,
-      deadline,
-      createdAt: new Date().toISOString().slice(0, 10),
-      teacher: "Bu Siti Rahma",
-    };
-    setSchool((prev) => ({ ...prev, tasks: [task, ...prev.tasks] }));
-    router.push("/g/dashboard");
+
+    const cls = classes.find((c) => c.name === selectedClass);
+    if (!cls) return;
+
+    setSubmitting(true);
+    setFError(null);
+
+    const fd = new FormData();
+    fd.set("class_code", cls.code);
+    fd.set("title", type === "kuis" ? `Kuis ${category} ${level}` : `Hafalan ${target} Kata ${level}`);
+    fd.set("type", type);
+    fd.set("level", level);
+    fd.set("category", category);
+    fd.set("target", target);
+    fd.set("duration", duration);
+    fd.set("deadline", deadline);
+
+    const r = await createTask(fd);
+    if (r?.error) {
+      setFError(r.error);
+      setSubmitting(false);
+    } else {
+      router.push("/g/dashboard");
+    }
   }
 
 
@@ -122,22 +158,28 @@ export default function AssignTaskWizard() {
 
             <div className="mt-4">
               <label className="mb-1 block text-sm font-semibold text-ink">Kelas Tujuan</label>
-              <div className="flex flex-wrap gap-2">
-                {classMap.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedClass(c.name)}
-                    className={
-                      "flex items-center gap-1.5 rounded-btn border px-3 py-2 text-sm font-semibold transition-colors " +
-                      (selectedClass === c.name
-                        ? "border-indigo bg-indigo-tint-soft/40 text-indigo"
-                        : "border-line text-ink-soft")
-                    }
-                  >
-                    <Users size={15} /> {c.name}
-                  </button>
-                ))}
-              </div>
+              {loadingClasses ? (
+                <p className="text-sm text-ink-soft">Memuat kelas...</p>
+              ) : classes.length === 0 ? (
+                <p className="text-sm text-ink-soft">Belum ada kelas yang diajar.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {classes.map((c) => (
+                    <button
+                      key={c.code}
+                      onClick={() => setSelectedClass(c.name)}
+                      className={
+                        "flex items-center gap-1.5 rounded-btn border px-3 py-2 text-sm font-semibold transition-colors " +
+                        (selectedClass === c.name
+                          ? "border-indigo bg-indigo-tint-soft/40 text-indigo"
+                          : "border-line text-ink-soft")
+                      }
+                    >
+                      <Users size={15} /> {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -234,6 +276,13 @@ export default function AssignTaskWizard() {
         )}
       </Card>
 
+      {/* Error */}
+      {fError && (
+        <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          {fError}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="sticky bottom-0 z-10 mt-6 flex gap-3 border-t border-line bg-warm-white pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 md:pb-4">
         <Button variant="outline" onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1}>
@@ -244,8 +293,12 @@ export default function AssignTaskWizard() {
             Lanjut
           </Button>
         ) : (
-          <Button className="flex-1" onClick={handleSubmit}>
-            Kirim Tugas
+          <Button className="flex-1" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? (
+              <><Loader2 size={16} className="animate-spin" /> Mengirim&hellip;</>
+            ) : (
+              "Kirim Tugas"
+            )}
           </Button>
         )}
       </div>

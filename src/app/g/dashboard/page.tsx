@@ -1,35 +1,33 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Users, ClipboardList, AlertTriangle, FileCheck, Plus, FileQuestion } from "lucide-react";
+import {
+  Users,
+  ClipboardList,
+  AlertTriangle,
+  FileCheck,
+  Plus,
+  FileQuestion,
+  Loader2,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { Badge } from "@/components/ui/Badge";
 import { useTimeGreeting } from "@/lib/time-greeting";
-import { TeacherBell } from "@/components/layout/TeacherBell";
+import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
 
-const TEACHER_NAME = "Bu Siti";
+/* ───────── Types ───────── */
+interface TeacherClass {
+  id: string;
+  name: string;
+  code: string;
+  student_count: number;
+}
 
-const summary = [
-  { icon: Users, label: "Kelas Diajar", value: "3", hint: "XII RPL 1 · XII RPL 2 · XI TKJ 1" },
-  { icon: ClipboardList, label: "Total Murid", value: "84", hint: "Aktif minggu ini" },
-  { icon: AlertTriangle, label: "Tugas Aktif", value: "12", hint: "5 menunggu review" },
-];
-
-const classes = [
-  { name: "XII RPL 1", students: 28, avg: 72, attention: 5 },
-  { name: "XII RPL 2", students: 30, avg: 68, attention: 3 },
-  { name: "XI TKJ 1", students: 26, avg: 81, attention: 1 },
-];
-
-const reviews = [
-  { task: "Latihan Ucapan 3", newCount: 12 },
-  { task: "Kuis Partikel N5", newCount: 8 },
-  { task: "Hafalan Kanji Bab 2", newCount: 5 },
-];
-
+/* ───────── Sparkline component (7-day placeholder) ───────── */
 const activity = [42, 55, 38, 61, 73, 58, 82];
 const dayLabels = ["S", "S", "R", "K", "J", "S", "M"];
 
@@ -68,9 +66,18 @@ function Sparkline({ data }: { data: number[] }) {
   );
 }
 
+/* ───────── Main Dashboard ───────── */
 export default function TeacherDashboard() {
   const router = useRouter();
+  const supabase = createClient();
+  const { profile: teacherProfile } = useAuth();
   const timeGreeting = useTimeGreeting();
+
+  const [classes, setClasses] = useState<TeacherClass[]>([]);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [activeTasks, setActiveTasks] = useState(0);
+  const [loading, setLoading] = useState(true);
+
   const today = new Date().toLocaleDateString("id-ID", {
     weekday: "long",
     day: "numeric",
@@ -78,16 +85,79 @@ export default function TeacherDashboard() {
     year: "numeric",
   });
 
+  useEffect(() => {
+    if (!teacherProfile?.id) return;
+
+    async function load() {
+      if (!teacherProfile?.id) return;
+      setLoading(true);
+
+      // 1) Ambil kelas yang diajar
+      const { data: kelasRaw } = await supabase
+        .from("classes")
+        .select("id, name, code")
+        .eq("teacher_id", teacherProfile.id)
+        .order("name");
+
+      const codes = (kelasRaw || []).map((k: any) => k.code).filter(Boolean);
+
+      // 2) Hitung murid per kelas
+      let studentCounts = new Map<string, number>();
+
+      if (codes.length > 0) {
+        const { data: muridRaw } = await supabase
+          .from("profiles")
+          .select("class_code")
+          .eq("role", "murid")
+          .in("class_code", codes);
+
+        muridRaw?.forEach((m: any) => {
+          if (m.class_code)
+            studentCounts.set(m.class_code, (studentCounts.get(m.class_code) || 0) + 1);
+        });
+
+        // 3) Hitung tugas aktif (deadline >= hari ini)
+        const today = new Date().toISOString().slice(0, 10);
+        const { count } = await supabase
+          .from("tasks")
+          .select("*", { count: "exact", head: true })
+          .eq("teacher_id", teacherProfile.id)
+          .gte("deadline", today);
+
+        setActiveTasks(count ?? 0);
+      }
+
+      const mapped: TeacherClass[] = (kelasRaw || []).map((k: any) => ({
+        id: k.id,
+        name: k.name,
+        code: k.code,
+        student_count: studentCounts.get(k.code) || 0,
+      }));
+
+      setClasses(mapped);
+      setTotalStudents(
+        Array.from(studentCounts.values()).reduce((a, b) => a + b, 0),
+      );
+      setLoading(false);
+    }
+
+    load();
+  }, [teacherProfile?.id, supabase]);
+
+  const teacherName = teacherProfile?.full_name ?? "Guru";
+  const classNames = classes.map((c) => c.name).join(" · ");
+
   return (
     <>
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink jp-rule">{timeGreeting.greeting}, {TEACHER_NAME}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink jp-rule">
+            {timeGreeting.greeting}, {teacherName}
+          </h1>
           <p className="mt-1 text-sm text-ink-soft">{today}</p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
-          <TeacherBell />
           <Button size="sm" fullWidth onClick={() => router.push("/g/tugas")}>
             <Plus size={16} /> Assign Tugas
           </Button>
@@ -101,108 +171,119 @@ export default function TeacherDashboard() {
       <p className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft">
         Ikhtisar
       </p>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {summary.map((s) => {
-          const Icon = s.icon;
-          const warn = s.label === "Tugas Aktif";
-          return (
-            <Card key={s.label} className="flex items-center gap-4 transition-shadow hover:shadow-soft-lg">
-              <span
-                className={
-                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-btn " +
-                  (warn ? "bg-vermillion/10" : "bg-indigo-tint-soft")
-                }
-              >
-                <Icon size={22} className={warn ? "text-vermillion" : "text-indigo"} />
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-ink-soft">
+          <Loader2 size={18} className="animate-spin" /> Memuat dashboard&hellip;
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Card className="flex items-center gap-4 transition-shadow hover:shadow-soft-lg">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-btn bg-indigo-tint-soft">
+                <Users size={22} className="text-indigo" />
               </span>
               <div className="min-w-0">
-                <p className="text-2xl font-bold leading-none text-ink">{s.value}</p>
-                <p className="mt-1 text-sm font-semibold text-ink">{s.label}</p>
-                <p className="truncate text-xs text-ink-soft">{s.hint}</p>
+                <p className="text-2xl font-bold leading-none text-ink">{classes.length}</p>
+                <p className="mt-1 text-sm font-semibold text-ink">Kelas Diajar</p>
+                <p className="truncate text-xs text-ink-soft">{classNames || "—"}</p>
               </div>
             </Card>
-          );
-        })}
-      </div>
-
-      {/* Main grid */}
-      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Classes */}
-        <div className="lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-bold tracking-tight text-ink">Kelas Saya</h2>
-            <Link href="/g/kelas" className="text-sm font-semibold text-indigo hover:underline">
-              Lihat semua
-            </Link>
+            <Card className="flex items-center gap-4 transition-shadow hover:shadow-soft-lg">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-btn bg-indigo-tint-soft">
+                <ClipboardList size={22} className="text-indigo" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold leading-none text-ink">{totalStudents}</p>
+                <p className="mt-1 text-sm font-semibold text-ink">Total Murid</p>
+                <p className="truncate text-xs text-ink-soft">Tersebar di {classes.length} kelas</p>
+              </div>
+            </Card>
+            <Card className="flex items-center gap-4 transition-shadow hover:shadow-soft-lg">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-btn bg-vermillion/10">
+                <AlertTriangle size={22} className="text-vermillion" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold leading-none text-ink">{activeTasks}</p>
+                <p className="mt-1 text-sm font-semibold text-ink">Tugas Aktif</p>
+                <p className="truncate text-xs text-ink-soft">{activeTasks > 0 ? "Belum deadline" : "Belum ada tugas"}</p>
+              </div>
+            </Card>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {classes.map((c) => (
-              <Card key={c.name} interactive padded>
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-base font-bold text-ink">{c.name}</h3>
-                  {c.attention > 0 && <Badge tone="gold">{c.attention} perhatian</Badge>}
-                </div>
-                <p className="mt-1 text-sm text-ink-soft">{c.students} murid</p>
-                <div className="mt-3">
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span className="text-ink-soft">Rata-rata penyelesaian</span>
-                    <span className="font-semibold text-indigo">{c.avg}%</span>
-                  </div>
-                  <ProgressBar value={c.avg} />
-                </div>
-                {c.attention > 0 && (
-                  <div className="mt-3 flex items-center gap-1.5 border-t border-line pt-3 text-xs font-medium text-vermillion">
-                    <AlertTriangle size={13} />
-                    {c.attention} murid perlu perhatian
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        </div>
 
-        {/* Right column */}
-        <div className="flex flex-col gap-6">
-          {/* Review queue */}
-          <div>
-            <h2 className="mb-3 text-lg font-bold tracking-tight text-ink">Tugas Perlu Direview</h2>
-            <div className="flex flex-col gap-3">
-              {reviews.map((r) => (
-                <Card key={r.task} padded>
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-btn bg-indigo-tint-soft">
-                      <FileCheck size={18} className="text-indigo" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-ink">{r.task}</p>
-                      <p className="mt-0.5 text-sm text-ink-soft">
-                        <span className="font-bold text-vermillion">{r.newCount}</span> submission baru
-                      </p>
-                    </div>
+          {/* Main grid */}
+          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Classes */}
+            <div className="lg:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-lg font-bold tracking-tight text-ink">Kelas Saya</h2>
+                <Link href="/g/kelas" className="text-sm font-semibold text-indigo hover:underline">
+                  Lihat semua
+                </Link>
+              </div>
+              {classes.length === 0 ? (
+                <p className="text-sm text-ink-soft">Belum ada kelas yang diajar.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {classes.map((c) => (
+                    <Card
+                      key={c.id}
+                      interactive
+                      padded
+                      onClick={() => router.push(`/g/kelas/${c.id}`)}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-base font-bold text-ink">{c.name}</h3>
+                      </div>
+                      <p className="mt-1 text-sm text-ink-soft">{c.student_count} murid</p>
+                      <div className="mt-3">
+                        <div className="mb-1 flex justify-between text-xs">
+                          <span className="text-ink-soft">Rata-rata penyelesaian</span>
+                          <span className="font-semibold text-indigo">—</span>
+                        </div>
+                        <ProgressBar value={0} />
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Right column */}
+            <div className="flex flex-col gap-6">
+              {/* Review queue — placeholder */}
+              <div>
+                <h2 className="mb-3 text-lg font-bold tracking-tight text-ink">Tugas Perlu Direview</h2>
+                <Card padded>
+                  <div className="flex flex-col items-center gap-2 py-4 text-center">
+                    <FileCheck size={32} className="text-indigo/30" />
+                    <p className="text-sm text-ink-soft">
+                      Belum ada tugas yang perlu direview.
+                    </p>
+                    <p className="text-xs text-ink-soft/60">
+                      Tugas akan muncul di sini setelah murid mengumpulkan.
+                    </p>
                   </div>
-                  <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => router.push("/g/kelas/murid")}>
-                    Review
-                  </Button>
                 </Card>
-              ))}
+              </div>
+
+              {/* Activity */}
+              <Card padded>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-ink">Aktivitas Kelas</p>
+                  <span className="text-xs text-ink-soft">7 hari terakhir</span>
+                </div>
+                <div className="mt-4">
+                  <Sparkline data={activity} />
+                </div>
+                <p className="mt-3 text-xs text-ink-soft">
+                  Data aktivitas akan muncul setelah murid mulai belajar.
+                </p>
+              </Card>
             </div>
           </div>
-
-          {/* Activity */}
-          <Card padded>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-ink">Aktivitas Kelas</p>
-              <span className="text-xs text-ink-soft">7 hari terakhir</span>
-            </div>
-            <div className="mt-4">
-              <Sparkline data={activity} />
-            </div>
-            <p className="mt-3 text-xs text-ink-soft">
-              Puncak engagement hari ini: <span className="font-semibold text-indigo">82%</span> murid aktif
-            </p>
-          </Card>
-        </div>
-      </div>
+        </>
+      )}
     </>
   );
 }

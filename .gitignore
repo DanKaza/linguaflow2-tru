@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/docs
 /.pnp
 .pnp.*
 .yarn/*
@@ -32,6 +33,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+
+# word bank build artifacts (raw downloaded datasets ~57MB)
+/scripts/build-vocab/tmp/
 
 # vercel
 .vercel

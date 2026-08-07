@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Layers, Volume2, X, Check, Trash2, BookOpen, Sparkles } from "lucide-react";
+import { Layers, Volume2, X, Check, Trash2, Sparkles } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useLocalStorage } from "@/lib/use-local-storage";
-import { speakJapanese, isSpeechSupported } from "@/lib/speech";
+import { useJapaneseSpeech, isSpeechSupported } from "@/lib/speech";
 
 interface WordLite {
   kanji: string;
@@ -21,10 +20,10 @@ interface WordLite {
 }
 
 export default function DeckPage() {
-  const router = useRouter();
   const [deck, setDeck] = useLocalStorage<WordLite[]>("lf-deck", []);
   const [studyIdx, setStudyIdx] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
+  const { isSpeaking, speak } = useJapaneseSpeech();
   const speechOn = isSpeechSupported();
 
   function remove(k: string) {
@@ -95,11 +94,11 @@ export default function DeckPage() {
                       </div>
                       {speechOn && (
                         <button
-                          onClick={() => speakJapanese(w.kanji)}
+                          onClick={() => speak(w.kanji, { kana: w.furigana, key: w.kanji })}
                           className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-tint-soft text-indigo transition-colors hover:bg-indigo hover:text-white"
                           aria-label="Dengar"
                         >
-                          <Volume2 size={16} />
+                          <Volume2 size={16} className={isSpeaking(w.kanji) ? "animate-pulse" : ""} />
                         </button>
                       )}
                       <button
@@ -166,10 +165,10 @@ export default function DeckPage() {
 
               {speechOn && (
                 <button
-                  onClick={() => speakJapanese(studying.kanji)}
+                  onClick={() => speak(studying.kanji, { kana: studying.furigana, key: "study" })}
                   className="mx-auto mt-4 flex items-center gap-1.5 text-xs font-semibold text-indigo"
                 >
-                  <Volume2 size={16} /> Dengar
+                  <Volume2 size={16} className={isSpeaking("study") ? "animate-pulse" : ""} /> Dengar
                 </button>
               )}
 

@@ -1,27 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, BellOff } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 
-const notifications = [
-  {
-    id: 1,
-    title: "Kuis Kata Kerja Bab 3",
-    desc: "Bu Siti Rahma memberi tugas baru · 10 soal pilihan ganda",
-    time: "2 jam lalu",
-    tone: "vermillion" as const,
-  },
-  {
-    id: 2,
-    title: "Streak 12 hari!",
-    desc: "Pertahankan belajarmu hari ini",
-    time: "Kemarin",
-    tone: "gold" as const,
-  },
-];
-
-/** Bell button + working notification sheet (mock data). Replaces dead inline bells. */
+/** Bell button + notification sheet. No fake data — shows an honest empty state. */
 export function NotificationBell({
   size = 20,
   color = "text-indigo",
@@ -39,36 +22,16 @@ export function NotificationBell({
         aria-label="Notifikasi"
       >
         <Bell size={size} />
-        <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-vermillion text-[10px] font-bold text-white">
-          2
-        </span>
       </button>
 
       <BottomSheet open={open} onClose={() => setOpen(false)} title="Notifikasi">
-        <div className="space-y-3 pb-4">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              className="flex gap-3 rounded-card border border-line bg-paper p-3"
-            >
-              <span
-                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-btn ${
-                  n.tone === "vermillion"
-                    ? "bg-vermillion/10 text-vermillion"
-                    : "bg-gold/10 text-gold"
-                }`}
-              >
-                <Bell size={16} />
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-ink">{n.title}</p>
-                <p className="text-xs text-ink-soft">{n.desc}</p>
-                <p className="mt-0.5 text-[10px] text-ink-soft/60">{n.time}</p>
-              </div>
-            </div>
-          ))}
-          <p className="pt-1 text-center text-[11px] text-ink-soft/60">
-            Kamu sudah melihat semua notifikasi
+        <div className="flex flex-col items-center py-10 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-tint-soft">
+            <BellOff size={24} className="text-indigo/40" />
+          </span>
+          <p className="mt-4 text-sm font-bold text-ink">Belum ada notifikasi</p>
+          <p className="mt-1 max-w-[16rem] text-xs text-ink-soft">
+            Pemberitahuan tugas dan pengingat belajar akan muncul di sini.
           </p>
         </div>
       </BottomSheet>
