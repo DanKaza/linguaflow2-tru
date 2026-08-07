@@ -1,38 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { Search, SlidersHorizontal, Bookmark, X, Volume2, ArrowUpDown, Layers, ChevronRight } from "lucide-react";
+import { Search, Bookmark, X, Volume2, ArrowUpDown, Layers, ChevronRight } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
-import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useLocalStorage } from "@/lib/use-local-storage";
-import { speakJapanese, isSpeechSupported } from "@/lib/speech";
+import { useJapaneseSpeech, isSpeechSupported } from "@/lib/speech";
+import { vocabulary } from "@/data/vocabulary";
+import type { VocabularyWord } from "@/lib/types";
+import { makeJapaneseSentence } from "@/lib/utils";
 
-interface Word {
-  kanji: string;
-  furigana: string;
-  romaji: string;
-  arti: string;
-  level: string;
-}
-
-const words: Word[] = [
-  { kanji: "会う", furigana: "あう", romaji: "au", arti: "Bertemu", level: "N5" },
-  { kanji: "開く", furigana: "あく", romaji: "aku", arti: "Terbuka", level: "N5" },
-  { kanji: "歩く", furigana: "あるく", romaji: "aruku", arti: "Berjalan", level: "N5" },
-  { kanji: "言う", furigana: "いう", romaji: "iu", arti: "Mengatakan", level: "N5" },
-  { kanji: "買う", furigana: "かう", romaji: "kau", arti: "Membeli", level: "N5" },
-  { kanji: "聞く", furigana: "きく", romaji: "kiku", arti: "Mendengar", level: "N5" },
-  { kanji: "食べる", furigana: "たべる", romaji: "taberu", arti: "Makan", level: "N5" },
-  { kanji: "飲む", furigana: "のむ", romaji: "nomu", arti: "Minum", level: "N5" },
-];
+type Word = VocabularyWord;
 
 type SortKey = "furigana" | "arti";
+
+/** Label Indonesia untuk part of speech dari word bank. */
+function posLabel(pos?: string): string {
+  if (!pos) return "";
+  if (pos.startsWith("v")) return "kata kerja";
+  if (pos.startsWith("adj") || pos.startsWith("a-")) return "kata sifat";
+  if (pos.startsWith("n")) return "kata benda";
+  if (pos.startsWith("adv")) return "kata keterangan";
+  if (pos.startsWith("prt")) return "partikel";
+  return "kosakata";
+}
 
 export default function KamusList() {
   const [q, setQ] = useState("");
@@ -41,7 +37,14 @@ export default function KamusList() {
   const [bookmarked, setBookmarked] = useLocalStorage<string[]>("lf-bookmarks", []);
   const [deck, setDeck] = useLocalStorage<Word[]>("lf-deck", []);
   const [deckToast, setDeckToast] = useState(false);
-  const [speechOn, setSpeechOn] = useState(() => isSpeechSupported());
+
+  // Render bertahap: hanya sebagian kata yang dirender, sisanya dimuat
+  // saat scroll — dulu seluruh ±3.000 kata dirender sekaligus (lambat).
+  const PAGE = 100;
+  const [visibleCount, setVisibleCount] = useState(PAGE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const { isSpeaking, speak } = useJapaneseSpeech();
+  const speechOn = isSpeechSupported();
 
   function toggleBookmark(k: string) {
     setBookmarked((prev) =>
@@ -50,26 +53,30 @@ export default function KamusList() {
   }
 
   function addToDeck(k: string) {
-    const w = words.find((x) => x.kanji === k);
+    const w = vocabulary.find((x) => x.kanji === k);
     if (!w) return;
     setDeck((prev) => (prev.some((p) => p.kanji === k) ? prev : [...prev, w]));
     setDeckToast(true);
     setTimeout(() => setDeckToast(false), 1800);
   }
 
-  const filtered = words
-    .filter(
-      (w) =>
-        w.kanji.includes(q) ||
-        w.furigana.includes(q) ||
-        w.romaji.toLowerCase().includes(q.toLowerCase()) ||
-        w.arti.toLowerCase().includes(q.toLowerCase()),
-    )
-    .sort((a, b) =>
-      sortBy === "furigana"
-        ? a.furigana.localeCompare(b.furigana, "ja")
-        : a.arti.localeCompare(b.arti, "id"),
-    );
+  const filtered = useMemo(
+    () =>
+      vocabulary
+        .filter(
+          (w) =>
+            w.kanji.includes(q) ||
+            w.furigana.includes(q) ||
+            w.romaji.toLowerCase().includes(q.toLowerCase()) ||
+            w.arti.toLowerCase().includes(q.toLowerCase()),
+        )
+        .sort((a, b) =>
+          sortBy === "furigana"
+            ? a.furigana.localeCompare(b.furigana, "ja")
+            : a.arti.localeCompare(b.arti, "id"),
+        ),
+    [q, sortBy],
+  );
 
   function kanaGroup(kana: string): string {
     const c = kana[0];
@@ -86,11 +93,55 @@ export default function KamusList() {
     return c;
   }
 
-  const groups = filtered.reduce<Record<string, Word[]>>((acc, w) => {
-    const key = sortBy === "furigana" ? kanaGroup(w.furigana) : w.arti[0]?.toUpperCase() ?? "#";
-    (acc[key] ??= []).push(w);
+  const groups = useMemo(() => {
+    const acc: Record<string, Word[]> = {};
+    for (const w of filtered) {
+      const key = sortBy === "furigana" ? kanaGroup(w.furigana) : w.arti[0]?.toUpperCase() ?? "#";
+      (acc[key] ??= []).push(w);
+    }
     return acc;
-  }, {});
+  }, [filtered, sortBy]);
+
+  // Potong daftar ke batas render: group utuh selama muat, lalu sisanya.
+  const visibleGroups = useMemo(() => {
+    let budget = visibleCount;
+    const out: [string, Word[]][] = [];
+    for (const [k, list] of Object.entries(groups)) {
+      if (budget <= 0) break;
+      const take = Math.min(list.length, budget);
+      out.push([k, list.slice(0, take)]);
+      budget -= take;
+    }
+    return out;
+  }, [groups, visibleCount]);
+  const hasMore = visibleCount < filtered.length;
+
+  // Kata terkait: ambil maksimal 3 kata lain dari level yang sama.
+  const relatedWords = useMemo(
+    () =>
+      selected
+        ? vocabulary
+            .filter((w) => w.level === selected.level && w.kanji !== selected.kanji)
+            .slice(0, 3)
+        : [],
+    [selected],
+  );
+
+  // Infinite scroll: saat sentinel terlihat, muat PAGE kata berikutnya.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleCount((v) => v + PAGE);
+        }
+      },
+      { rootMargin: "600px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, PAGE]);
 
   // Lock body scroll when bottom sheet is open, preventing layout shift
   useEffect(() => {
@@ -112,21 +163,27 @@ export default function KamusList() {
     <StudentShell noHeader>
       <AnimatedPage>
         <h1 className="text-2xl font-bold text-ink">Kamus</h1>
-        <p className="text-xs text-ink-soft">3.200+ kosakata N5–N1</p>
+        <p className="text-xs text-ink-soft">{vocabulary.length.toLocaleString("id-ID")} kosakata N5–N3</p>
 
         {/* Search */}
         <div className="relative mt-4">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" />
           <Input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setVisibleCount(PAGE);
+            }}
             placeholder="Cari kanji, hiragana, atau arti..."
             className="pl-10 pr-24"
           />
           <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
             {q && (
               <button
-                onClick={() => setQ("")}
+                onClick={() => {
+                  setQ("");
+                  setVisibleCount(PAGE);
+                }}
                 className="flex h-7 w-7 items-center justify-center text-ink-soft transition-colors hover:text-indigo"
                 aria-label="Hapus pencarian"
               >
@@ -134,7 +191,10 @@ export default function KamusList() {
               </button>
             )}
             <button
-              onClick={() => setSortBy((s) => (s === "furigana" ? "arti" : "furigana"))}
+              onClick={() => {
+                setSortBy((s) => (s === "furigana" ? "arti" : "furigana"));
+                setVisibleCount(PAGE);
+              }}
               className="flex items-center gap-1 rounded-full bg-indigo-tint-soft px-2.5 py-1 text-[11px] font-semibold text-indigo transition-colors hover:bg-indigo-tint-soft/70"
               aria-label="Urutkan"
             >
@@ -179,7 +239,7 @@ export default function KamusList() {
             initial="initial"
             animate="animate"
           >
-            {Object.entries(groups).map(([k, list]) => (
+            {visibleGroups.map(([k, list]) => (
               <motion.section key={k} variants={staggerItem}>
                 <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-indigo">
                   <span className="jp">{k}</span>
@@ -187,16 +247,16 @@ export default function KamusList() {
                     {sortBy === "furigana" ? "行" : "huruf"}
                   </span>
                   <span className="ml-auto text-[11px] font-normal text-ink-soft">
-                    {list.length} kata
+                    {groups[k]?.length ?? list.length} kata
                   </span>
                 </h2>
                 <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-paper">
                   {list.map((w, i) => (
                     <motion.div
-                      key={w.kanji}
+                      key={`${w.kanji}-${w.furigana}`}
                       initial={{ opacity: 0, x: -12 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: i * 0.03 }}
+                      transition={{ duration: 0.25, delay: Math.min(i, 10) * 0.02 }}
                       role="button"
                       tabIndex={0}
                       onClick={() => setSelected(w)}
@@ -210,7 +270,7 @@ export default function KamusList() {
                     >
                       <span className="jp-bold w-20 text-xl text-indigo">{w.kanji}</span>
                       <span className="jp text-xs text-ink-soft">{w.furigana}</span>
-                      <span className="flex-1 text-sm font-semibold text-ink">{w.arti}</span>
+                      <span className="flex-1 truncate text-sm font-semibold text-ink">{w.arti}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -232,12 +292,15 @@ export default function KamusList() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            speakJapanese(w.kanji);
+                            speak(w.kanji, { kana: w.furigana, key: `row-${w.kanji}` });
                           }}
                           className="transition-colors hover:text-indigo"
                           aria-label="Dengar"
                         >
-                          <Volume2 size={18} className="text-ink-soft" />
+                          <Volume2
+                            size={18}
+                            className={isSpeaking(`row-${w.kanji}`) ? "animate-pulse text-indigo" : "text-ink-soft"}
+                          />
                         </button>
                       )}
                     </motion.div>
@@ -245,6 +308,21 @@ export default function KamusList() {
                 </div>
               </motion.section>
             ))}
+
+            {/* Load lebih banyak (infinite scroll) */}
+            {hasMore && (
+              <div className="pb-4 text-center">
+                <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setVisibleCount((v) => v + PAGE)}
+                >
+                  Muat lebih banyak ({Math.min(visibleCount, filtered.length)}/{filtered.length})
+                </Button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatedPage>
@@ -312,9 +390,9 @@ export default function KamusList() {
                         whileTap={{ scale: 0.85 }}
                         className="flex h-9 w-9 items-center justify-center text-indigo/60 transition-colors hover:text-indigo"
                         aria-label="Dengar"
-                        onClick={() => speakJapanese(selected.kanji)}
+                        onClick={() => speak(selected.kanji, { kana: selected.furigana, key: "sheet" })}
                       >
-                        <Volume2 size={18} />
+                        <Volume2 size={18} className={isSpeaking("sheet") ? "animate-pulse text-indigo" : ""} />
                       </motion.button>
                     )}
                     <motion.button
@@ -334,36 +412,50 @@ export default function KamusList() {
 
                 {/* Arti */}
                 <h3 className="mt-5 text-sm font-bold text-ink">Arti</h3>
-                <p className="text-sm text-ink-soft">{selected.arti} (kata kerja)</p>
+                <p className="text-sm text-ink-soft">
+                  {selected.arti}
+                  {posLabel(selected.pos) && ` (${posLabel(selected.pos)})`}
+                </p>
 
                 {/* Contoh Kalimat */}
                 <h3 className="mt-4 text-sm font-bold text-ink">Contoh Kalimat</h3>
                 <div className="mt-2 space-y-2">
-                  <button
-                    onClick={() => speakJapanese(`${selected.kanji}ことが好きです`)}
-                    className="w-full rounded-btn bg-indigo-tint-soft p-3 text-left transition-colors hover:bg-indigo-tint-soft/70"
-                  >
-                    <p className="jp text-sm text-ink">{selected.kanji}ことが好きです</p>
-                    <p className="mt-1 flex items-center gap-1 text-xs text-ink-soft">
-                      {selected.romaji} koto ga suki desu — Saya suka {selected.arti.toLowerCase()}
-                      {speechOn && <Volume2 size={12} className="text-indigo" />}
-                    </p>
-                  </button>
+                  {(() => {
+                    const ex = makeJapaneseSentence(selected);
+                    return (
+                      <button
+                        onClick={() => speak(ex.jp, { key: "contoh" })}
+                        className="w-full rounded-btn bg-indigo-tint-soft p-3 text-left transition-colors hover:bg-indigo-tint-soft/70"
+                      >
+                        <p className="jp text-sm text-ink">{ex.jp}</p>
+                        <p className="mt-1 flex items-center gap-1 text-xs text-ink-soft">
+                          {ex.id}
+                          {speechOn && (
+                            <Volume2
+                              size={12}
+                              className={isSpeaking("contoh") ? "animate-pulse text-indigo" : "text-indigo"}
+                            />
+                          )}
+                        </p>
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {/* Kata Terkait */}
                 <h3 className="mt-4 text-sm font-bold text-ink">Kata Terkait</h3>
                 <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto">
-                  {["食べ物", "飲む", "ご飯"].map((r) => (
+                  {relatedWords.map((r) => (
                     <button
-                      key={r}
+                      key={`${r.kanji}-${r.furigana}`}
                       onClick={() => {
-                        setQ(r);
+                        setQ(r.kanji);
+                        setVisibleCount(PAGE);
                         setSelected(null);
                       }}
                       className="jp shrink-0 cursor-pointer rounded-full border border-indigo bg-paper px-3 py-1.5 text-sm text-indigo transition-colors hover:bg-indigo hover:text-white"
                     >
-                      {r}
+                      {r.kanji}
                     </button>
                   ))}
                 </div>

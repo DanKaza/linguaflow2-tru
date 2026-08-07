@@ -8,29 +8,33 @@ import {
   Trophy,
   Zap,
   ClipboardList,
-  TrendingUp,
   Flame,
-  Timer,
+  Clock,
   ChevronRight,
   ScrollText,
   BookOpen,
   Sword,
   Sparkles,
-  Medal,
-  Clock,
   Check,
 } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ProgressBar } from "@/components/ui/ProgressBar";
-import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
+import {
+  AnimatedPage,
+  staggerContainer,
+  staggerItem,
+} from "@/components/ui/AnimatedPage";
+import { useProgress } from "@/lib/progress";
 
 type Tab = "guru" | "harian";
 
 // ─── Clean stat card — icon only, no colored backgrounds ───
-function StatCard({ icon: Icon, value, label, iconColor }: {
+function StatCard({
+  icon: Icon,
+  value,
+  label,
+  iconColor,
+}: {
   icon: React.ElementType;
   value: string;
   label: string;
@@ -43,16 +47,29 @@ function StatCard({ icon: Icon, value, label, iconColor }: {
       className="rounded-card bg-paper border border-line p-4 shadow-soft transition-all hover:shadow-soft-lg active:scale-[0.98]"
     >
       <Icon size={22} className={iconColor} />
-      <span className="mt-2 block text-xl font-bold text-ink leading-none">{value}</span>
+      <span className="mt-2 block text-xl font-bold text-ink leading-none">
+        {value}
+      </span>
       <p className="mt-0.5 text-[11px] font-medium text-ink-soft">{label}</p>
     </motion.div>
   );
 }
 
 // ─── Empty state ───
-function EmptyState({ icon: Icon, title, desc }: { icon: React.ElementType; title: string; desc: string }) {
+function EmptyState({
+  icon: Icon,
+  title,
+  desc,
+}: {
+  icon: React.ElementType;
+  title: string;
+  desc: string;
+}) {
   return (
-    <motion.div variants={staggerItem} className="mt-12 flex flex-col items-center text-center">
+    <motion.div
+      variants={staggerItem}
+      className="mt-12 flex flex-col items-center text-center"
+    >
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-tint-soft">
         <Icon size={32} className="text-indigo/40" />
       </div>
@@ -62,30 +79,14 @@ function EmptyState({ icon: Icon, title, desc }: { icon: React.ElementType; titl
   );
 }
 
-// ─── Deadline bar ───
-function DeadlineBar({ deadline, pct = 60 }: { deadline: string; pct?: number }) {
-  return (
-    <div className="mt-2.5 space-y-1.5">
-      <div className="flex items-center justify-between text-[11px]">
-        <span className="flex items-center gap-1 font-semibold text-vermillion">
-          <Timer size={11} /> {deadline}
-        </span>
-        <span className="text-ink-soft/50">{pct}% waktu terpakai</span>
-      </div>
-      <div className="h-1 rounded-full bg-vermillion/15 overflow-hidden">
-        <motion.div
-          className="h-full rounded-full bg-gradient-to-r from-vermillion to-vermillion-soft"
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-        />
-      </div>
-    </div>
-  );
-}
-
 // ─── Horizontal challenge card ───
-function ChallengeCard({ icon: Icon, title, desc, iconColor, gradient }: {
+function ChallengeCard({
+  icon: Icon,
+  title,
+  desc,
+  iconColor,
+  gradient,
+}: {
   icon: React.ElementType;
   title: string;
   desc: string;
@@ -102,14 +103,19 @@ function ChallengeCard({ icon: Icon, title, desc, iconColor, gradient }: {
       className="cursor-pointer rounded-card bg-paper border border-line p-4 shadow-soft transition-all hover:shadow-soft-lg active:scale-[0.98]"
     >
       <div className="flex items-center gap-4">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${gradient}`}>
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${gradient}`}
+        >
           <Icon size={22} className={iconColor} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-ink">{title}</p>
           <p className="text-xs text-ink-soft mt-0.5">{desc}</p>
         </div>
-        <ChevronRight size={18} className="shrink-0 text-ink-soft/30 transition-all group-hover:text-indigo group-hover:translate-x-0.5" />
+        <ChevronRight
+          size={18}
+          className="shrink-0 text-ink-soft/30 transition-all group-hover:text-indigo group-hover:translate-x-0.5"
+        />
       </div>
     </motion.div>
   );
@@ -119,12 +125,16 @@ function ChallengeCard({ icon: Icon, title, desc, iconColor, gradient }: {
 export default function KuisList() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("guru");
-  const hasTasks = true;
+  const [progress] = useProgress();
 
   return (
     <StudentShell noHeader>
       <AnimatedPage>
-        <motion.div variants={staggerContainer} initial="initial" animate="animate">
+        <motion.div
+          variants={staggerContainer}
+          initial="initial"
+          animate="animate"
+        >
           {/* ════════════════════════════════════════ */}
           {/* PREMIUM PAGE HEADER */}
           {/* ════════════════════════════════════════ */}
@@ -142,27 +152,48 @@ export default function KuisList() {
                     <Sword size={22} className="text-white" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold leading-tight">Kuis & Tantangan</h1>
-                    <p className="text-[12px] text-white/70">Uji kemampuan bahasa Jepangmu</p>
+                    <h1 className="text-xl font-bold leading-tight">
+                      Kuis & Tantangan
+                    </h1>
+                    <p className="text-[12px] text-white/70">
+                      Uji kemampuan bahasa Jepangmu
+                    </p>
                   </div>
                 </div>
 
                 {/* Mini motivational text */}
                 <div className="mt-3 flex items-center gap-2 rounded-btn bg-white/10 px-3 py-2">
                   <Sparkles size={14} className="text-gold shrink-0" />
-                  <p className="text-xs text-white/80">Kuis hari ini: N5 Random · 10 soal</p>
+                  <p className="text-xs text-white/80">
+                    Kuis hari ini: N5 Random · 10 soal
+                  </p>
                 </div>
               </div>
             </div>
           </motion.div>
 
           {/* ════════════════════════════════════════ */}
-          {/* STATS — 3 premium cards */}
+          {/* STATS — 3 premium cards (data asli dari progress) */}
           {/* ════════════════════════════════════════ */}
           <div className="mt-4 grid grid-cols-3 gap-2.5">
-            <StatCard icon={BookOpen} value="85" label="Rata-rata skor" iconColor="text-indigo" />
-            <StatCard icon={Flame} value="7" label="Hari streak" iconColor="text-gold" />
-            <StatCard icon={Medal} value="12" label="Kuis selesai" iconColor="text-success" />
+            <StatCard
+              icon={BookOpen}
+              value={String(progress.reviewed.length)}
+              label="Kata dipelajari"
+              iconColor="text-indigo"
+            />
+            <StatCard
+              icon={Flame}
+              value={String(progress.streak)}
+              label="Hari streak"
+              iconColor="text-gold"
+            />
+            <StatCard
+              icon={Check}
+              value={String(progress.totalSessions)}
+              label="Sesi selesai"
+              iconColor="text-success"
+            />
           </div>
 
           {/* ════════════════════════════════════════ */}
@@ -186,9 +217,6 @@ export default function KuisList() {
             >
               <ScrollText size={16} />
               Tugas Guru
-              <span className="flex h-5 min-w-[18px] items-center justify-center rounded bg-vermillion/15 px-1.5 text-[10px] font-bold text-vermillion">
-                2
-              </span>
             </button>
             <button
               role="tab"
@@ -219,110 +247,11 @@ export default function KuisList() {
             >
               {/* ───────── TUGAS GURU ───────── */}
               {tab === "guru" && (
-                <>
-                  {hasTasks ? (
-                    <div className="mt-4 space-y-5">
-                      {/* Section: Urgent */}
-                      <section>
-                        <div className="mb-3 flex items-center gap-2">
-                          <span className="flex h-5 w-1 rounded-full bg-vermillion" />
-                          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-vermillion">
-                            Perlu Segera
-                          </p>
-                          <span className="h-px flex-1 bg-vermillion/20" />
-                        </div>
-
-                        <div className="rounded-card border border-vermillion/20 bg-paper shadow-soft transition-all hover:shadow-soft-lg active:scale-[0.98]">
-                          <div className="p-5">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-3">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-vermillion/10">
-                                  <Sword size={20} className="text-vermillion" />
-                                </div>
-                                <div className="space-y-0.5">
-                                  <p className="text-sm font-bold text-ink">Kuis Kata Kerja Bab 3</p>
-                                  <p className="text-xs text-ink-soft">Bu Siti Rahma · 10 soal pilihan ganda</p>
-                                </div>
-                              </div>
-                              <Badge tone="vermillion" className="shrink-0 text-[10px]">Mendesak</Badge>
-                            </div>
-                            <DeadlineBar deadline="Besok 23:59" pct={60} />
-                            <motion.div
-                              whileHover={{ scale: 1.01 }}
-                              whileTap={{ scale: 0.97 }}
-                              className="mt-3"
-                            >
-                              <Button
-                                className="w-full shadow-soft"
-                                size="sm"
-                                onClick={() => router.push("/m/kuis/soal")}
-                              >
-                                <Zap size={16} /> Kerjakan Sekarang
-                              </Button>
-                            </motion.div>
-                          </div>
-                        </div>
-                      </section>
-
-                      {/* Section: Completed / other tasks */}
-                      <section>
-                        <div className="mb-3 flex items-center gap-2">
-                          <span className="flex h-5 w-1 rounded-full bg-ink-soft/30" />
-                          <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink-soft">
-                            Tugas Lainnya
-                          </p>
-                          <span className="h-px flex-1 bg-line" />
-                        </div>
-
-                        <div className="group relative overflow-hidden rounded-card border border-line bg-paper shadow-soft transition-all hover:shadow-soft-lg active:scale-[0.98]">
-                          <div className="p-5">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-3">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-tint-soft">
-                                  <BookOpen size={20} className="text-indigo" />
-                                </div>
-                                <div className="space-y-0.5">
-                                  <p className="text-sm font-bold text-ink">Hafalan Partikel</p>
-                                  <p className="text-xs text-ink-soft">Bu Siti Rahma · 15 soal</p>
-                                </div>
-                              </div>
-                              <Badge tone="neutral" className="shrink-0 text-[10px]">5 hari lagi</Badge>
-                            </div>
-
-                            <div className="mt-4 space-y-2.5">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-success/15">
-                                    <Check size={12} className="text-success" />
-                                  </span>
-                                  <span className="text-xs font-semibold text-success">85%</span>
-                                </div>
-                                <span className="text-[11px] text-ink-soft">Sudah dikerjakan</span>
-                              </div>
-                              <ProgressBar value={85} color="success" height={4} trackClass="!bg-indigo-tint-soft/30" />
-                              <div className="flex justify-end pt-1">
-                                <motion.button
-                                  whileHover={{ x: 3 }}
-                                  whileTap={{ scale: 0.97 }}
-                                  onClick={() => router.push("/m/kuis/review")}
-                                  className="flex items-center gap-1 text-xs font-semibold text-indigo transition-colors hover:text-indigo-tint"
-                                >
-                                  Lihat Hasil <ChevronRight size={14} />
-                                </motion.button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </section>
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={ClipboardList}
-                      title="Tidak ada tugas"
-                      desc="Gurumu belum memberikan tugas. Santai dulu!"
-                    />
-                  )}
-                </>
+                <EmptyState
+                  icon={ClipboardList}
+                  title="Tidak ada tugas"
+                  desc="Gurumu belum memberikan tugas. Tugas yang dikirim akan muncul di sini."
+                />
               )}
 
               {/* ───────── KUIS HARIAN ───────── */}
@@ -345,17 +274,27 @@ export default function KuisList() {
                           <Dices size={24} className="text-white" />
                         </div>
                         <div>
-                          <p className="text-base font-bold text-white">Kuis Hari Ini</p>
-                          <p className="text-[12px] text-white/60">N5 Random · 10 soal · ±5 menit</p>
+                          <p className="text-base font-bold text-white">
+                            Kuis Hari Ini
+                          </p>
+                          <p className="text-[12px] text-white/60">
+                            N5 Random · 10 soal · ±5 menit
+                          </p>
                         </div>
                       </div>
 
                       <div className="mt-4 flex items-center gap-2 rounded-btn bg-white/10 px-3 py-2 backdrop-blur-sm">
                         <Clock size={14} className="text-white/60" />
-                        <span className="text-xs text-white/70">Tersedia hingga 23:59 WIB</span>
+                        <span className="text-xs text-white/70">
+                          Tersedia hingga 23:59 WIB
+                        </span>
                       </div>
 
-                      <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.97 }} className="mt-4">
+                      <motion.div
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.97 }}
+                        className="mt-4"
+                      >
                         <Button
                           fullWidth
                           className="bg-white text-indigo font-bold transition-all hover:bg-white/90 active:scale-[0.97] shadow-soft"
@@ -378,7 +317,7 @@ export default function KuisList() {
                   <ChallengeCard
                     icon={Trophy}
                     title="Tantangan Mingguan"
-                    desc="Kumpulkan 100 poin · 3 hari lagi"
+                    desc="Kumpulkan poin · hadiah eksklusif"
                     iconColor="text-success"
                     gradient="bg-gradient-to-r from-success/15 to-emerald-400/15"
                   />
@@ -390,7 +329,11 @@ export default function KuisList() {
                   >
                     <Flame size={16} className="text-gold" />
                     <p className="text-xs text-ink-soft">
-                      Streak kamu <span className="font-bold text-indigo">7 hari</span> berturut-turut
+                      Streak kamu{" "}
+                      <span className="font-bold text-indigo">
+                        {progress.streak} hari
+                      </span>{" "}
+                      berturut-turut
                     </p>
                   </motion.div>
                 </div>

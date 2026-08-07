@@ -1,21 +1,17 @@
-import { AppSidebar, adminItems } from "@/components/layout/AppSidebar";
+import { AppShell } from "@/components/layout/AppShell";
+import { adminItems } from "@/components/layout/AppSidebar";
 import { AdminMobileBottomNav } from "@/components/layout/AdminMobileBottomNav";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-warm-white">
-      <AppSidebar
-        role="admin"
-        items={adminItems}
-        userName="Budi Santoso"
-        userSub="Admin SMK Texar"
-      />
-      <div className="md:pl-60">
-        <div className="mx-auto max-w-7xl px-4 pb-20 pt-6 md:px-8 md:py-8 md:pb-8">
-          {children}
-        </div>
-      </div>
-      <AdminMobileBottomNav />
-    </div>
+    <AppShell
+      role="admin"
+      items={adminItems}
+      userName="Budi Santoso"
+      userSub="Admin SMK Texar"
+      bottomNav={<AdminMobileBottomNav />}
+    >
+      {children}
+    </AppShell>
   );
 }

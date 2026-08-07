@@ -1,18 +1,22 @@
+"use client";
+
+import { useCallback } from "react";
 import { Avatar } from "@/components/ui/Avatar";
 import { StudentBottomNav } from "@/components/layout/StudentBottomNav";
 import { StudentSidebar } from "@/components/layout/StudentSidebar";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { useAuth } from "@/lib/auth-context";
+import { useLocalStorage } from "@/lib/use-local-storage";
 
 /** Default greeting header — only used on dashboard */
-export function StudentTopBar({ name = "Ahmad Fauzi" }: { name?: string }) {
-  const first = name.split(" ")[0];
+export function StudentTopBar({ name = "Murid" }: { name?: string }) {
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-warm-white px-4 py-3 md:hidden">
       <div className="flex items-center gap-2">
         <Avatar name={name} size={36} />
         <div>
           <p className="text-xs text-ink-soft">Halo,</p>
-          <p className="text-sm font-bold text-ink leading-none">{first}</p>
+          <p className="text-sm font-bold text-ink leading-none">{name.split(" ")[0]}</p>
         </div>
       </div>
       <NotificationBell size={22} />
@@ -32,7 +36,7 @@ export function SimpleHeader({ title }: { title: string }) {
 
 export function StudentShell({
   children,
-  name,
+  name: propName,
   header,
   title,
   noHeader,
@@ -43,6 +47,16 @@ export function StudentShell({
   title?: string;
   noHeader?: boolean;
 }) {
+  const { profile } = useAuth();
+  const displayName = propName || profile?.full_name || "Murid";
+
+  // Sidebar desktop bisa diciutkan menjadi rel ikon (tersimpan lintas halaman).
+  const [collapsed, setCollapsed] = useLocalStorage<boolean>(
+    "lf-sidebar-collapsed",
+    false,
+  );
+  const toggleSidebar = useCallback(() => setCollapsed((c) => !c), [setCollapsed]);
+
   let topBar: React.ReactNode | null;
   if (noHeader) {
     topBar = null;
@@ -51,7 +65,7 @@ export function StudentShell({
   } else if (title) {
     topBar = <SimpleHeader title={title} />;
   } else {
-    topBar = <StudentTopBar name={name} />;
+    topBar = <StudentTopBar name={displayName} />;
   }
 
   return (
@@ -62,9 +76,14 @@ export function StudentShell({
       >
         Langsung ke konten
       </a>
-      <StudentSidebar />
+      <StudentSidebar collapsed={collapsed} onToggle={toggleSidebar} />
       {topBar}
-      <main id="main-content" className="mx-auto max-w-lg px-4 pb-20 pt-4 md:ml-60 md:max-w-4xl md:px-6 md:pt-6">
+      <main
+        id="main-content"
+        className={`mx-auto max-w-lg px-4 pb-20 pt-4 transition-all duration-300 md:px-6 md:pt-6 ${
+          collapsed ? "md:ml-16 md:max-w-6xl" : "md:ml-60 md:max-w-4xl"
+        }`}
+      >
         {children}
       </main>
       <StudentBottomNav />

@@ -30,6 +30,7 @@ export function useLocalStorage<T>(
         } else {
           valid = typeof parsed === typeof initial ? parsed : initial;
         }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: render initial, lalu baca storage di effect setelah mount.
         setValue(valid as T);
       }
     } catch {

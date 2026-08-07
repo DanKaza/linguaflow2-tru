@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   Plus,
   GripVertical,
   Trash2,
   Download,
+  Loader2,
 } from "lucide-react";
 import {
   DndContext,
@@ -29,7 +30,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useRouter } from "next/navigation";
-import { useSchool, type SchoolQuiz } from "@/lib/school";
+import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
+import { publishQuiz } from "./actions";
 
 interface Word {
   id: number;
@@ -96,7 +99,13 @@ function SortableWord({ w, index, onRemove }: { w: Word; index: number; onRemove
 
 export default function QuizCreator() {
   const router = useRouter();
-  const [school, setSchool] = useSchool();
+  const supabase = createClient();
+  const { profile: teacherProfile } = useAuth();
+
+  const [classes, setClasses] = useState<{ code: string; name: string }[]>([]);
+  const [selectedClassCode, setSelectedClassCode] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+  const [fError, setFError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Word[]>([bank[0], bank[1], bank[2]]);
   const [q, setQ] = useState("");
   const [title, setTitle] = useState("Kuis Kata Kerja Bab 3");
@@ -106,6 +115,28 @@ export default function QuizCreator() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
+
+  useEffect(() => {
+    const teacherId = teacherProfile?.id;
+    if (!teacherId) return;
+
+    async function load() {
+      const { data: kelasRaw } = await supabase
+        .from("classes")
+        .select("code, name")
+        .eq("teacher_id", teacherId)
+        .order("name");
+
+      const clsList = (kelasRaw || []).map((k: any) => ({
+        code: k.code,
+        name: k.name,
+      }));
+      setClasses(clsList);
+      if (clsList.length > 0) setSelectedClassCode(clsList[0].code);
+    }
+
+    load();
+  }, [teacherProfile?.id, supabase]);
 
   const filtered = bank.filter(
     (w) =>
@@ -131,21 +162,40 @@ export default function QuizCreator() {
     }
   }
 
-  function handlePublish() {
+  async function handlePublish() {
     if (selected.length === 0) return;
-    const quiz: SchoolQuiz = {
-      id: `q-${Date.now()}`,
-      title: title || "Kuis Tanpa Judul",
-      level,
-      passingGrade: Number(passing) || 75,
-      words: selected.map((w) => ({ kanji: w.kanji, furigana: w.furigana, arti: w.arti, level: w.level })),
-      classId: "xii-rpl-1",
-      className: "XII RPL 1",
-      teacher: "Bu Siti Rahma",
-      publishedAt: new Date().toISOString().slice(0, 10),
-    };
-    setSchool((prev) => ({ ...prev, quizzes: [quiz, ...prev.quizzes] }));
-    router.push("/g/dashboard");
+    if (!selectedClassCode) {
+      setFError("Pilih kelas tujuan.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFError(null);
+
+    const fd = new FormData();
+    fd.set("title", title || "Kuis Tanpa Judul");
+    fd.set("level", level);
+    fd.set("passing_grade", passing);
+    fd.set("class_code", selectedClassCode);
+    fd.set(
+      "words",
+      JSON.stringify(
+        selected.map((w) => ({
+          kanji: w.kanji,
+          furigana: w.furigana,
+          arti: w.arti,
+          level: w.level,
+        })),
+      ),
+    );
+
+    const r = await publishQuiz(fd);
+    if (r?.error) {
+      setFError(r.error);
+      setSubmitting(false);
+    } else {
+      router.push("/g/dashboard");
+    }
   }
 
   return (
@@ -153,14 +203,34 @@ export default function QuizCreator() {
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold tracking-tight text-ink jp-rule">Buat Kuis Baru</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push("/g/dashboard")}>
-            Simpan Draft
-          </Button>
-          <Button size="sm" onClick={handlePublish}>
-            <Download size={15} /> Publish
+          <Select
+            value={selectedClassCode}
+            onChange={(e) => setSelectedClassCode(e.target.value)}
+            className="sm:w-48"
+          >
+            {classes.length === 0 && <option value="">Pilih kelas</option>}
+            {classes.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={handlePublish} disabled={submitting}>
+            {submitting ? (
+              <><Loader2 size={15} className="animate-spin" /> Publis&hellip;</>
+            ) : (
+              <><Download size={15} /> Publish</>
+            )}
           </Button>
         </div>
       </div>
+
+      {/* Error */}
+      {fError && (
+        <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          {fError}
+        </div>
+      )}
 
       {/* Basic info */}
       <Card className="mt-5" padded>

@@ -1,11 +1,7 @@
 // Client-side progress store (no backend, no DB).
-// Persists to localStorage so a Gen-Z learner sees real, consistent numbers
-// across reloads — no fake hardcoded stats.
-//
-// Note on mounting: useLocalStorage renders with `initial` on first paint, then
-// hydrates from localStorage in an effect. We therefore seed with realistic
-// starting values (so the UI never looks empty) and let storage take over
-// after mount.
+// Persists to localStorage so a learner sees real, consistent numbers across
+// reloads — no fake hardcoded stats. A brand-new user starts from zero so the
+// first experience is honest.
 
 import { useLocalStorage } from "@/lib/use-local-storage";
 
@@ -29,8 +25,8 @@ export interface SrsItem {
 }
 
 const SEED: ProgressState = {
-  xp: 350,
-  streak: 3,
+  xp: 0,
+  streak: 0,
   mastered: [],
   reviewed: [],
   srsQueue: [],

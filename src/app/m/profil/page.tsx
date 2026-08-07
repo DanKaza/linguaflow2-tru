@@ -14,8 +14,8 @@ import {
   Flame,
   BookOpen,
   Check,
-  Camera,
   User as UserIcon,
+  Loader2,
 } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
 import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
@@ -26,17 +26,9 @@ import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/Ani
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { useTheme } from "@/lib/theme";
-import { useLocalStorage } from "@/lib/use-local-storage";
 import { useProgress } from "@/lib/progress";
-
-const stats = [
-  { v: "2.450", l: "Total XP", icon: Star },
-  { v: "12 Hari", l: "Streak", icon: Flame },
-  { v: "156", l: "Kata Dikuasai", icon: BookOpen },
-  { v: "24", l: "Kuis Selesai", icon: Check },
-];
-
-const activity = [20, 35, 28, 45, 60, 40, 75, 55, 80, 65, 90, 70, 85, 100];
+import { useAuth } from "@/lib/auth-context";
+import { createClient } from "@/lib/supabase/client";
 
 const languages = ["Indonesia", "English", "日本語"] as const;
 
@@ -45,25 +37,45 @@ type SheetKind = "profile" | "password" | "notif" | "language" | "logout" | null
 export default function Profil() {
   const { theme, toggle: toggleTheme } = useTheme();
   const dark = theme === "dark";
-
-  const [name, setName] = useLocalStorage<string>("lf-name", "Ahmad Fauzi");
-  const [school, setSchool] = useLocalStorage<string>("lf-school", "XII RPL 1 · SMK Texar");
-  const [avatarColor, setAvatarColor] = useLocalStorage<string>("lf-avatar-color", "");
-  const [language, setLanguage] = useLocalStorage<string>("lf-language", "Indonesia");
-  const [notifOn, setNotifOn] = useLocalStorage<boolean>("lf-notif", true);
+  const { profile, signOut, refreshProfile } = useAuth();
   const [progress] = useProgress();
 
   const [sheet, setSheet] = useState<SheetKind>(null);
-  const [draftName, setDraftName] = useState(name);
-  const [draftSchool, setDraftSchool] = useState(school);
+  const [draftName, setDraftName] = useState(profile?.full_name ?? "");
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notifOn, setNotifOn] = useState(true);
+  const [language, setLanguage] = useState("Indonesia");
 
-  function saveProfile() {
-    setName(draftName.trim() || "Ahmad Fauzi");
-    setSchool(draftSchool.trim() || "XII RPL 1 · SMK Texar");
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
-    setSheet(null);
+  const fullName = profile?.full_name || "Murid";
+  const classInfo = profile?.class_code || (profile?.role === "murid" ? "Murid" : "");
+
+  async function saveProfile() {
+    if (!profile) return;
+    const name = draftName.trim();
+    if (!name) {
+      setError("Nama tidak boleh kosong.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ full_name: name })
+        .eq("id", profile.id);
+      if (updateError) throw new Error(updateError.message);
+      await refreshProfile();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+      setSheet(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan profil.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -77,12 +89,16 @@ export default function Profil() {
               whileHover={{ scale: 1.03 }}
               transition={{ type: "spring", stiffness: 200 }}
             >
-              <Avatar name={name} size={88} color={avatarColor || undefined} />
+              <Avatar name={fullName} size={88} />
               <motion.button
                 whileTap={{ scale: 0.85 }}
-                onClick={() => setSheet("profile")}
+                onClick={() => {
+                  setDraftName(fullName);
+                  setError(null);
+                  setSheet("profile");
+                }}
                 className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-paper bg-indigo text-white shadow-soft transition-colors hover:bg-indigo-tint"
-                aria-label="Edit foto"
+                aria-label="Edit profil"
               >
                 <Pencil size={14} />
               </motion.button>
@@ -93,7 +109,7 @@ export default function Profil() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
             >
-              {name}
+              {fullName}
             </motion.h1>
             <motion.p
               className="text-sm text-ink-soft"
@@ -101,7 +117,7 @@ export default function Profil() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              {school}
+              {profile?.email || classInfo}
             </motion.p>
           </motion.div>
 
@@ -110,7 +126,7 @@ export default function Profil() {
             {[
               { v: progress.xp.toLocaleString(), l: "Total XP", icon: Star },
               { v: `${progress.streak} Hari`, l: "Streak", icon: Flame },
-              { v: progress.reviewed.length, l: "Kata Dikuasai", icon: BookOpen },
+              { v: progress.reviewed.length, l: "Kata Dipelajari", icon: BookOpen },
               { v: progress.totalSessions, l: "Sesi Selesai", icon: Check },
             ].map((s) => (
               <motion.div
@@ -127,40 +143,6 @@ export default function Profil() {
             ))}
           </motion.div>
 
-          {/* Activity chart with animated bars */}
-          <motion.div variants={staggerItem}>
-            <Card className="mt-4 transition-all hover:shadow-soft-lg" padded>
-              <div className="flex items-center justify-between">
-                <h2 className="lf-section-rule text-sm font-bold text-ink">Aktivitas 14 Hari</h2>
-                <span className="text-[11px] font-semibold text-indigo">+12%</span>
-              </div>
-              <div className="mt-4 flex items-end gap-1.5">
-                {activity.map((v, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <motion.div
-                      className="w-full rounded-t-sm"
-                      style={{
-                        background: `linear-gradient(to top, var(--color-indigo), var(--color-indigo-tint-2))`,
-                        opacity: 0.6 + (v / 100) * 0.4,
-                      }}
-                      initial={{ height: 0 }}
-                      animate={{ height: `${v * 0.55}px` }}
-                      transition={{ duration: 0.5, delay: 0.3 + i * 0.03, ease: [0.16, 1, 0.3, 1] }}
-                    />
-                    {i % 2 === 0 && <span className="text-[8px] text-ink-soft">{i + 1}</span>}
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </motion.div>
-
-          {/* Role switcher (dev) */}
-          <motion.div variants={staggerItem} className="mt-4">
-            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft">
-              Mode Tampilan
-            </p>
-            <RoleSwitcher current="murid" />
-          </motion.div>
 
           {/* Settings */}
           <motion.div variants={staggerItem} className="mt-4 space-y-1">
@@ -234,47 +216,35 @@ export default function Profil() {
       <BottomSheet open={sheet === "profile"} onClose={() => setSheet(null)} title="Edit Profil">
         <div className="space-y-4 pb-2">
           <div className="flex flex-col items-center">
-            <Avatar name={draftName || "Ahmad Fauzi"} size={72} color={avatarColor || undefined} />
-            <p className="mt-2 text-[11px] text-ink-soft">Warna avatar (demo)</p>
-            <div className="mt-1 flex gap-2">
-              {["#2b3a67", "#c8373a", "#e8b04b", "#10b981", "#5a6fa8"].map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setAvatarColor(c)}
-                  className={
-                    "h-7 w-7 rounded-full ring-2 transition-all " +
-                    (avatarColor === c ? "ring-indigo" : "ring-transparent")
-                  }
-                  style={{ backgroundColor: c }}
-                  aria-label={`Warna ${c}`}
-                />
-              ))}
-            </div>
+            <Avatar name={draftName || fullName} size={72} />
+            <p className="mt-2 text-[11px] text-ink-soft">Foto profil menyusul</p>
           </div>
           <div>
             <label className="text-xs font-semibold text-ink-soft">Nama</label>
             <Input value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Nama" />
           </div>
           <div>
-            <label className="text-xs font-semibold text-ink-soft">Kelas / Sekolah</label>
-            <Input value={draftSchool} onChange={(e) => setDraftSchool(e.target.value)} placeholder="Kelas / Sekolah" />
+            <label className="text-xs font-semibold text-ink-soft">Email</label>
+            <Input value={profile?.email ?? ""} disabled className="opacity-60" />
           </div>
-          <Button fullWidth size="lg" onClick={saveProfile}>
-            {saved ? <Check size={18} /> : <UserIcon size={18} />} {saved ? "Tersimpan" : "Simpan Profil"}
+          {error && <p className="text-center text-xs font-semibold text-error">{error}</p>}
+          <Button fullWidth size="lg" onClick={saveProfile} disabled={saving}>
+            {saving ? <Loader2 size={18} className="animate-spin" /> : saved ? <Check size={18} /> : <UserIcon size={18} />}
+            {saving ? "Menyimpan..." : saved ? "Tersimpan" : "Simpan Profil"}
           </Button>
         </div>
       </BottomSheet>
 
       <BottomSheet open={sheet === "password"} onClose={() => setSheet(null)} title="Ganti Password">
         <div className="space-y-3 pb-2">
-          {["Password saat ini", "Password baru", "Konfirmasi password baru"].map((ph) => (
+          {["Password baru", "Konfirmasi password baru"].map((ph) => (
             <Input key={ph} type="password" placeholder={ph} />
           ))}
           <Button fullWidth size="lg" disabled className="opacity-60">
             <Shield size={18} /> Simpan (Segera Hadir)
           </Button>
           <p className="text-center text-[11px] text-ink-soft/60">
-            Fitur ini membutuhkan server autentikasi.
+            Fitur ganti password akan segera tersedia.
           </p>
         </div>
       </BottomSheet>
@@ -301,7 +271,7 @@ export default function Profil() {
             </span>
           </div>
           <p className="text-center text-[11px] text-ink-soft/60">
-            Status tersimpan di perangkat ini.
+            Preferensi disimpan di perangkat ini.
           </p>
         </div>
       </BottomSheet>
@@ -332,16 +302,16 @@ export default function Profil() {
       <BottomSheet open={sheet === "logout"} onClose={() => setSheet(null)} title="Keluar">
         <div className="space-y-3 pb-2">
           <p className="text-center text-sm text-ink-soft">
-            Kamu akan keluar dari sesi ini. (Demo — belum ada backend login.)
+            Kamu akan keluar dari akun ini di perangkat ini.
           </p>
           <Button
             fullWidth
             size="lg"
             variant="primary"
-            onClick={() => setSheet(null)}
+            onClick={() => signOut()}
             className="bg-vermillion"
           >
-            <LogOut size={18} /> Ya, Keluar (Segera Hadir)
+            <LogOut size={18} /> Ya, Keluar
           </Button>
           <Button fullWidth variant="outline" onClick={() => setSheet(null)}>
             Batal

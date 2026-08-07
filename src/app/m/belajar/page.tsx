@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Lock, ChevronRight, BookOpen, Zap, Package, Palette, Link2, Flame, Check } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
@@ -10,25 +11,68 @@ import { Badge } from "@/components/ui/Badge";
 import { RingProgress } from "@/components/ui/ProgressBar";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useTimeGreeting } from "@/lib/time-greeting";
+import { useAuth } from "@/lib/auth-context";
+import { useProgress } from "@/lib/progress";
+import { vocabulary } from "@/data/vocabulary";
+import type { JLPTLevel } from "@/lib/types";
 
-const levels = [
-  { id: "N5", label: "N5", active: true, locked: false, progress: 78 },
-  { id: "N4", label: "N4", active: false, locked: true, progress: 0 },
-  { id: "N3", label: "N3", active: false, locked: true, progress: 0 },
-];
+const LEVELS: JLPTLevel[] = ["N5", "N4", "N3"];
 
-const categories = [
-  { name: "Kata Benda", done: 32, total: 50, icon: Package, desc: "Kosakata dasar", color: "indigo" },
-  { name: "Kata Kerja", done: 20, total: 40, icon: Zap, desc: "Godan & Ichidan", color: "vermillion" },
-  { name: "Kata Sifat", done: 15, total: 30, icon: Palette, desc: "い & な adjektiva", color: "gold" },
-  { name: "Partikel", done: 8, total: 20, icon: Link2, desc: "は, を, が, に, へ", color: "success" },
+interface Category {
+  name: string;
+  key: string;
+  icon: React.ComponentType<{ size?: number }>;
+  desc: string;
+  color: "indigo" | "vermillion" | "gold" | "success";
+  match: (pos?: string) => boolean;
+}
+
+const categories: Category[] = [
+  { name: "Kata Benda", key: "n", icon: Package, desc: "Kosakata dasar", color: "indigo", match: (p) => !!p && p.startsWith("n") },
+  { name: "Kata Kerja", key: "v", icon: Zap, desc: "Godan & Ichidan", color: "vermillion", match: (p) => !!p && p.startsWith("v") },
+  { name: "Kata Sifat", key: "adj", icon: Palette, desc: "い & な adjektiva", color: "gold", match: (p) => !!p && (p.startsWith("adj") || p.startsWith("a-")) },
+  { name: "Partikel", key: "prt", icon: Link2, desc: "は, を, が, に, へ", color: "success", match: (p) => !!p && p.startsWith("prt") },
 ];
 
 export default function ChooseDeck() {
   const timeGreeting = useTimeGreeting();
-  const totalDone = categories.reduce((s, c) => s + c.done, 0);
-  const totalAll = categories.reduce((s, c) => s + c.total, 0);
-  const overallPct = Math.round((totalDone / totalAll) * 100);
+  const { profile } = useAuth();
+  const [progress] = useProgress();
+  const [activeLevel, setActiveLevel] = useState<JLPTLevel>("N5");
+
+  const firstName = (profile?.full_name || "Murid").trim().split(/\s+/)[0] || "Murid";
+
+  // ── Hitung dari word bank asli ──
+  const stats = useMemo(() => {
+    const masteredSet = new Set(progress.mastered);
+
+    const levelWords = (lv: JLPTLevel) => vocabulary.filter((w) => w.level === lv);
+    const levelMastered = (lv: JLPTLevel) =>
+      levelWords(lv).filter((w) => masteredSet.has(w.kanji)).length;
+
+    const counts = LEVELS.map((lv) => ({
+      level: lv,
+      total: levelWords(lv).length,
+      mastered: levelMastered(lv),
+    }));
+
+    const catCounts = categories.map((c) => {
+      const words = vocabulary.filter((w) => c.match(w.pos));
+      const done = words.filter((w) => masteredSet.has(w.kanji)).length;
+      return { ...c, done, total: words.length };
+    });
+
+    const overallMastered = masteredSet.size;
+    const overallTotal = vocabulary.length;
+
+    return { counts, catCounts, overallMastered, overallTotal };
+  }, [progress.mastered]);
+
+  const active = stats.counts.find((c) => c.level === activeLevel)!;
+  const activePct = active.total > 0 ? Math.round((active.mastered / active.total) * 100) : 0;
+  const totalDone = stats.catCounts.reduce((s, c) => s + c.done, 0);
+  const totalAll = stats.catCounts.reduce((s, c) => s + c.total, 0);
+  const overallPct = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
 
   return (
     <StudentShell noHeader>
@@ -59,8 +103,8 @@ export default function ChooseDeck() {
                       <timeGreeting.icon size={18} strokeWidth={2.25} />
                     </span>
                     <div>
-                      <p className="text-xs font-semibold text-white/70">{timeGreeting.greeting}, Ahmad</p>
-                      <p className="text-sm font-bold leading-tight">Level N5 — {timeGreeting.jpGreeting}</p>
+                      <p className="text-xs font-semibold text-white/70">{timeGreeting.greeting}, {firstName}</p>
+                      <p className="text-sm font-bold leading-tight">Level {activeLevel} — {timeGreeting.jpGreeting}</p>
                     </div>
                   </div>
                   <Badge tone="gold" className="text-[11px]">
@@ -87,16 +131,16 @@ export default function ChooseDeck() {
                 {/* Stats row */}
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   <div className="rounded-btn bg-white/10 px-3 py-2 text-center">
-                    <p className="text-lg font-bold leading-none">{totalDone}</p>
+                    <p className="text-lg font-bold leading-none">{progress.mastered.length}</p>
                     <p className="mt-0.5 text-[10px] text-white/70">Kata Dikuasai</p>
                   </div>
                   <div className="rounded-btn bg-white/10 px-3 py-2 text-center">
-                    <p className="text-lg font-bold leading-none">12</p>
-                    <p className="mt-0.5 text-[10px] text-white/70"><Flame size={14} className="text-vermillion" /> Streak</p>
+                    <p className="text-lg font-bold leading-none"><Flame size={14} className="text-vermillion" /> {progress.streak}</p>
+                    <p className="mt-0.5 text-[10px] text-white/70">Streak</p>
                   </div>
                   <div className="rounded-btn bg-white/10 px-3 py-2 text-center">
-                    <p className="text-lg font-bold leading-none">156</p>
-                    <p className="mt-0.5 text-[10px] text-white/70">XP Hari Ini</p>
+                    <p className="text-lg font-bold leading-none">{progress.xp}</p>
+                    <p className="mt-0.5 text-[10px] text-white/70">Total XP</p>
                   </div>
                 </div>
 
@@ -122,18 +166,21 @@ export default function ChooseDeck() {
           <motion.div variants={staggerItem} className="mt-5">
             <h2 className="text-base font-bold text-ink">Pilih Level JLPT</h2>
             <div className="mt-2 flex gap-2">
-              {levels.map((l) => {
-                const active = l.active;
+              {stats.counts.map((l) => {
+                const active = l.level === activeLevel;
+                const locked = l.total === 0;
+                const pct = l.total > 0 ? Math.round((l.mastered / l.total) * 100) : 0;
                 return (
                   <motion.button
-                    key={l.id}
-                    whileTap={!l.locked ? { scale: 0.95 } : undefined}
-                    disabled={l.locked}
+                    key={l.level}
+                    whileTap={!locked ? { scale: 0.95 } : undefined}
+                    disabled={locked}
+                    onClick={() => setActiveLevel(l.level)}
                     className={
                       "relative flex flex-1 flex-col items-center gap-1.5 rounded-btn py-3 text-sm font-bold transition-all duration-200 " +
                       (active
                         ? "bg-indigo text-white shadow-soft"
-                        : l.locked
+                        : locked
                           ? "bg-paper text-ink-soft border border-line opacity-60"
                           : "bg-paper text-ink-soft border border-line hover:border-indigo/30")
                     }
@@ -147,10 +194,15 @@ export default function ChooseDeck() {
                         <Check size={10} />
                       </motion.span>
                     )}
-                    <span className="text-base">{l.label}</span>
-                    {l.locked && <Lock size={12} className="text-ink-soft" />}
-                    {active && !l.locked && (
-                      <span className="text-[10px] text-white/70">{l.progress}%</span>
+                    <span className="text-base">{l.level}</span>
+                    {locked && <Lock size={12} className="text-ink-soft" />}
+                    {!locked && (
+                      <span className="text-[10px] text-white/70">
+                        {l.mastered}/{l.total}
+                      </span>
+                    )}
+                    {active && !locked && (
+                      <span className="text-[10px] text-white/70">{pct}%</span>
                     )}
                   </motion.button>
                 );
@@ -164,19 +216,19 @@ export default function ChooseDeck() {
           <motion.div variants={staggerItem}>
             <Card className="mt-4 flex items-center gap-5 transition-all hover:shadow-soft-lg" padded>
               <div className="shrink-0">
-                <RingProgress value={78} size={88} stroke={8}>
-                  <span className="text-base font-bold text-indigo">78%</span>
-                  <span className="text-[9px] text-ink-soft">N5</span>
+                <RingProgress value={activePct} size={88} stroke={8}>
+                  <span className="text-base font-bold text-indigo">{activePct}%</span>
+                  <span className="text-[9px] text-ink-soft">{activeLevel}</span>
                 </RingProgress>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="font-bold text-ink">Level N5</p>
+                  <p className="font-bold text-ink">Level {activeLevel}</p>
                   <span className="rounded-full bg-indigo-tint-soft px-2 py-0.5 text-[10px] font-semibold text-indigo">
-                    JLPT N5
+                    JLPT {activeLevel}
                   </span>
                 </div>
-                <p className="mt-0.5 text-sm text-ink-soft">156 / 200 kata dikuasai</p>
+                <p className="mt-0.5 text-sm text-ink-soft">{active.mastered} / {active.total} kata dikuasai</p>
                 <div className="mt-2 flex items-center gap-2">
                   <motion.div
                     className="h-1.5 flex-1 rounded-full bg-indigo-tint-soft overflow-hidden"
@@ -186,7 +238,7 @@ export default function ChooseDeck() {
                     <motion.div
                       className="h-full rounded-full bg-indigo"
                       initial={{ width: "0%" }}
-                      animate={{ width: "78%" }}
+                      animate={{ width: `${activePct}%` }}
                       transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.4 }}
                     />
                   </motion.div>
@@ -210,8 +262,8 @@ export default function ChooseDeck() {
               <span className="text-xs text-ink-soft/60">{totalDone}/{totalAll} kata</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {categories.map((c, i) => {
-                const pct = Math.round((c.done / c.total) * 100);
+              {stats.catCounts.map((c, i) => {
+                const pct = c.total > 0 ? Math.round((c.done / c.total) * 100) : 0;
                 const barColor =
                   c.color === "vermillion"
                     ? "bg-vermillion"
@@ -271,7 +323,7 @@ export default function ChooseDeck() {
               <motion.div whileTap={{ scale: 0.97 }}>
                 <Button fullWidth size="lg" className="relative overflow-hidden">
                   <span className="relative z-10 flex items-center gap-2">
-                    <Zap size={20} /> Mulai Sesi Acak (20 kata)
+                    <Zap size={20} /> Mulai Sesi ({activeLevel} — 20 kata)
                   </span>
                 </Button>
               </motion.div>
