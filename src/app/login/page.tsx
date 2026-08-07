@@ -123,26 +123,6 @@ export default function LoginPage() {
             </Button>
           </Link>
         </form>
-
-        {/* Demo accounts */}
-        <div className="mt-5 rounded-card border border-dashed border-indigo/40 bg-indigo-tint-soft/30 p-4">
-          <p className="text-xs font-bold text-indigo">Akun Demo (klik untuk masuk cepat)</p>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {demos.map((d) => (
-              <button
-                key={d.role}
-                onClick={() => quick(d.role, d.email)}
-                className="rounded-btn border border-indigo bg-paper px-2 py-2 text-xs font-semibold text-indigo transition-colors hover:bg-indigo-tint-soft"
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-[10px] text-ink-soft">
-            Role otomatis dari email. Backend masih simulasi.
-          </p>
-        </div>
-
         <p className="mt-6 text-center text-xs text-ink-soft">© 2026 LinguaFlow School</p>
       </div>
     </div>
