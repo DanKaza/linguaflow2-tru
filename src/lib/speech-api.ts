@@ -9,7 +9,7 @@
  */
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_SPEECH_API_URL ?? "http://154.12.118.208:2328";
+  process.env.NEXT_PUBLIC_SPEECH_API_URL ?? "https://api.rynaqrtz.my.id";
 
 export interface TranscribeOptions {
   /** Kode bahasa ISO 639-1. Default: "ja". */

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { KanjiText } from "@/components/ui/KanjiText";
 import { AnimatedPage } from "@/components/ui/AnimatedPage";
 import { vocabulary } from "@/data/vocabulary";
+import { recordQuizAttempt } from "../actions";
 
 interface Soal {
   id: number;
@@ -179,6 +180,17 @@ export default function KuisSoal() {
     } catch {
       /* sessionStorage unavailable */
     }
+
+    // Rekam hasil ke database — sumber data Laporan Sekolah (non-blocking).
+    recordQuizAttempt({
+      score,
+      correctCount: items.filter((it) => it.ok).length,
+      total: items.length,
+      totalXP: baseXP + bonusXP,
+    }).catch(() => {
+      /* kegagalan rekam tidak memblokir navigasi ke review */
+    });
+
     router.push("/m/kuis/review");
   }, [picked, currentSoal, isLast, soalList, router]);
 
