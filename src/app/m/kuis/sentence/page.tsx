@@ -23,6 +23,7 @@ import { StudentShell } from "@/components/layout/StudentShell";
 import { Button } from "@/components/ui/Button";
 import { AnimatedPage } from "@/components/ui/AnimatedPage";
 import { vocabulary } from "@/data/vocabulary";
+import { recordQuizAttempt } from "../actions";
 
 interface SentenceExercise {
   prompt: string;       // arti yang harus disusun
@@ -273,6 +274,18 @@ export default function SentenceBuilder() {
     } catch {
       /* sessionStorage unavailable */
     }
+
+    // Rekam hasil ke database — sumber data Laporan Sekolah (non-blocking),
+    // di luar try sessionStorage supaya tetap tercatat walau storage gagal.
+    recordQuizAttempt({
+      score: correct ? 100 : 0,
+      correctCount: correct ? 1 : 0,
+      total: 1,
+      totalXP: correct ? 20 : 0,
+    }).catch(() => {
+      /* kegagalan rekam tidak memblokir navigasi ke review */
+    });
+
     router.push("/m/kuis/review");
   }
 
