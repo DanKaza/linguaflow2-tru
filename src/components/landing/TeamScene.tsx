@@ -1,165 +1,138 @@
 "use client";
 
-import { useRef } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { viewportOnce, easeOut } from "@/lib/motion";
-import { ScrollHint } from "@/components/landing/ScrollHint";
+import { JapaneseCloud, CloudAccent } from "@/components/landing/JapaneseCloud";
 
-/**
- * Scene 10 — TEAM (zig-zag, borderless)
- * Photo half-body + name/role, alternating sides.
- * No cards / borders — just photo (edge-blurred so the crop fades)
- * and editorial text. Mobile stacks: photo on top, text below.
- */
-type Member = {
-  name: string;
-  role: string;
-  focus: string;
-  initials: string;
-  photo?: string; // drop file at /public/team/<slug>.jpg
-};
-
-const team: Member[] = [
-  {
-    name: "Sensei Khudori",
-    role: "Project Manager & Business Analyst",
-    focus: "Menyusun alur produk, riset kebutuhan sekolah, dan menjaga tim tetap pada tujuan.",
-    initials: "SK",
-  },
-  {
-    name: "Umar Khanif",
-    role: "UI/UX Designer & Frontend",
-    focus: "Merancang tampilan dan pengalaman belajar agar nyaman dipakai murid setiap hari.",
-    initials: "UK",
-  },
-  {
-    name: "Wildan Mubarok",
-    role: "DevOps & QA Tester & Backend",
-    focus: "Menjaga server tetap stabil, menguji fitur, dan meracik logika di balik layar.",
-    initials: "WM",
-  },
-  {
-    name: "Krisna Dwi Muthi",
-    role: "Copywriter & SEO",
-    focus: "Menulis cerita LinguaFlow dan membuat platform mudah ditemukan calon pengguna.",
-    initials: "KM",
-  },
+const team = [
+  { name: "Kelas", role: "Community", focus: "Belajar bareng, tumbuh bareng. Setiap murid punya tempat di sini.", initials: "学", num: "01" },
+  { name: "Guru", role: "Guidance", focus: "Bimbingan yang nggak pernah berhenti, dari mereka yang peduli.", initials: "師", num: "02" },
+  { name: "Teknologi", role: "Innovation", focus: "AI dan metode modern yang bikin belajar makin dekat dan personal.", initials: "技", num: "03" },
+  { name: "Kreativitas", role: "Creativity", focus: "Dibangun dengan sepenuh hati, untuk sekolah yang menjadi rumah.", initials: "創", num: "04" },
 ];
 
-function TeamPhoto({ member, index }: { member: Member; index: number }) {
-  const fromLeft = index % 2 === 1; // odd rows: photo on the left
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={viewportOnce}
-      transition={{ duration: 0.7, ease: easeOut, delay: 0.05 }}
-      className="relative mx-auto aspect-[4/5] w-full max-w-[200px] sm:max-w-[260px] md:max-w-[300px]"
-    >
-      {/* soft halo behind photo */}
-      <div className="absolute inset-0 -z-10 rounded-[2rem] bg-gradient-to-br from-gold/20 via-navy/10 to-jp-red/15 blur-xl" />
-      <div
-        className={`relative h-full w-full overflow-hidden rounded-[2rem] ${
-          fromLeft ? "rounded-br-[4rem]" : "rounded-bl-[4rem]"
-        }`}
-        style={{
-          // edge-blur mask: fades the bottom where the half-body crop sits
-          WebkitMaskImage:
-            "linear-gradient(to bottom, #000 78%, transparent 100%)",
-          maskImage: "linear-gradient(to bottom, #000 78%, transparent 100%)",
-        }}
-      >
-        {member.photo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={member.photo}
-            alt={member.name}
-            className="h-full w-full object-cover object-top [filter:blur(0.3px)]"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-navy-soft to-navy">
-            <span className="font-jp text-6xl font-bold text-cream/80">
-              {member.initials}
-            </span>
-          </div>
-        )}
-        {/* subtle grain so the fade blends with the navy section */}
-        <div className="pointer-events-none absolute inset-0 bg-navy/10" />
-      </div>
-    </motion.div>
-  );
-}
-
-function TeamText({ member }: { member: Member }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={viewportOnce}
-      transition={{ duration: 0.7, ease: easeOut, delay: 0.12 }}
-      className="text-center md:text-left"
-    >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-gold/80 sm:text-xs">
-        {member.role}
-      </p>
-      <h3 className="mt-1.5 text-xl font-bold text-cream sm:text-2xl md:text-3xl">
-        {member.name}
-      </h3>
-      <span className="lf-stroke mt-2.5" />
-      <p className="mt-3 max-w-sm text-xs leading-relaxed text-cream/55 sm:text-sm md:mx-0 mx-auto">
-        {member.focus}
-      </p>
-    </motion.div>
-  );
-}
+const colors = [
+  "from-jp-red/10 via-transparent to-transparent",
+  "from-gold/10 via-transparent to-transparent",
+  "from-navy/10 via-transparent to-transparent",
+  "from-jp-red/5 via-gold/5 to-transparent",
+];
 
 export function TeamScene() {
-  const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 0.7", "end 0.3"] });
-  const opacity = useTransform(scrollYProgress, [0, 0.4], [0, 1]);
-
   return (
-    <section aria-label="Tim kami" id="tim" ref={ref} className="relative bg-navy pb-[10vh] pt-[34vh] overflow-hidden md:pt-[26vh]">
-      {/* Kanji watermark */}
-      <span className="lf-kanji text-[25vw] right-[-12%] bottom-[-5%] text-cream/5">友</span>
+    <section aria-label="Tim kami" id="tim" className="relative py-24 md:py-32 overflow-hidden">
+      {/* Decorative Japanese clouds — Kasumi + mega mendung style */}
+      <div className="pointer-events-none absolute top-8 right-0 w-[40%] max-w-[400px] translate-x-[10%] -translate-y-[8%] select-none">
+        <JapaneseCloud
+          variant="kasumi-medium"
+          color="navy"
+          className="blur-[1.5px]"
+        />
+      </div>
+      <CloudAccent
+        variant="kasumi-small"
+        color="navy"
+        className="blur-[1px] bottom-[10%] left-[2%] w-[28%] max-w-[260px]"
+      />
 
-      <motion.div style={{ opacity }} className="relative mx-auto max-w-5xl px-6 md:px-10">
-        {/* heading */}
-        <div className="mx-auto mb-16 max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-gold">
-            Tim
-          </p>
-          <h2 className="mt-4 text-3xl font-bold text-cream md:text-4xl">
-            Siswa SMK Texar di balik layar
-          </h2>
-          <p className="mt-3 text-sm text-cream/40">
-            Bukan perusahaan. Bukan startup. Empat orang yang percaya pendidikan
-            bisa diubah.
-          </p>
-        </div>
+      <div className="relative z-10 mx-auto max-w-6xl px-6 md:px-10">
+        {/* ─── Puzzle Header ─── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={viewportOnce}
+          transition={{ duration: 0.6, ease: easeOut }}
+          className="mb-16 md:mb-24"
+        >
+          {/* The inkan stamp floats and overlaps */}
+          <div className="relative inline-block">
+            {/* Stamp — rotated, overlapping title */}
+            <span
+              className="absolute -top-2 -left-2 md:-top-4 md:-left-4 inline-flex h-10 w-10 md:h-12 md:w-12 items-center justify-center rounded-lg border-2 border-jp-red/80 text-jp-red font-bold text-lg md:text-xl rotate-[-6deg] select-none z-20 bg-cream/80 backdrop-blur-[2px] md:backdrop-blur-sm shadow-sm"
+              style={{ fontFamily: "serif" }}
+            >
+              流
+            </span>
 
-        {/* zig-zag rows — 2 columns on all sizes (mobile keeps the laptop look) */}
-        <div className="flex flex-col gap-12 sm:gap-16 md:gap-24">
-          {team.map((member, i) => {
-            const photoLeft = i % 2 === 1;
-            return (
-              <div
-                key={member.name}
-                className="grid grid-cols-1 items-center gap-6 sm:grid-cols-2 sm:gap-4 md:gap-12"
-              >
-                <div className={photoLeft ? "order-1" : "order-2"}>
-                  <TeamPhoto member={member} index={i} />
+            {/* Label — offset to the right of stamp */}
+            <p className="text-[10px] md:text-xs font-semibold uppercase tracking-[0.4em] text-jp-red/70 ml-14 md:ml-24 mb-2">
+              Community — The Spirit of SMK Texar
+            </p>
+          </div>
+
+          {/* Title with organic layout */}
+          <div className="relative mt-4 md:mt-6">
+            <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-navy leading-[1.1] font-display">
+              <span className="block">Bukan perusahaan.</span>
+              <span className="block mt-1 font-display-italic italic font-light text-ink-soft/50 text-2xl md:text-3xl lg:text-4xl">
+                Bukan startup. Tapi semangat.
+              </span>
+            </h2>
+
+
+            {/* Organic brushstroke under title */}
+            <svg className="mt-2 md:mt-4 w-40 md:w-56 h-4 text-jp-red/15" viewBox="0 0 200 16" fill="none" aria-hidden="true">
+              <path d="M2 12 Q 50 0 100 10 Q 150 20 198 6" stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
+            </svg>            <p className="mt-4 md:mt-6 text-sm md:text-base text-ink-soft/60 max-w-xl leading-relaxed md:leading-loose">
+              Sebuah sekolah yang percaya bahwa masa depan pendidikan
+              bahasa dimulai dari kenyamanan, kedekatan, dan dedikasi.{" "}
+              <span className="italic">
+                Because the best learning happens when you feel at home.
+              </span>
+            </p>
+
+          </div>
+        </motion.div>
+
+        {/* ─── Puzzle Cards Grid ─── */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-4 lg:gap-6 items-start">
+          {team.map((member, i) => (
+            <motion.div
+              key={member.name}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={viewportOnce}
+              transition={{ duration: 0.6, ease: easeOut, delay: 0.1 + i * 0.12 }}
+              className={`group relative ${i % 2 === 1 ? "md:translate-y-10" : ""} ${i === 3 ? "md:translate-x-4" : ""} ${i === 1 ? "md:-translate-x-4" : ""}`}
+            >
+              {/* Photo / Initials */}
+              <div className={`relative aspect-[4/5] overflow-hidden rounded-xl border border-line/30 bg-gradient-to-br ${colors[i]} transition-all duration-500 group-hover:shadow-xl group-hover:scale-[1.02]`}>
+                <div className="flex h-full w-full items-center justify-center">
+                  <span className="text-5xl md:text-6xl font-bold text-navy/10 transition-all duration-500 group-hover:text-navy/20 group-hover:scale-110">
+                    {member.initials}
+                  </span>
                 </div>
-                <div className={photoLeft ? "order-2" : "order-1"}>
-                  <TeamText member={member} />
-                </div>
+                {/* Number badge — organic placement */}
+                <span className="absolute bottom-3 right-3 text-[11px] font-bold text-ink-soft/15">
+                  {member.num}
+                </span>
+                {/* Hover gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-jp-red/[0.04] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               </div>
-            );
-          })}
+
+              {/* Member info */}
+              <div className="mt-4 md:mt-5">
+                <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-jp-red/70 mb-1.5">
+                  {member.role}
+                </p>
+                <h3 className="text-base md:text-lg font-bold text-navy mb-1.5">
+                  {member.name}
+                </h3>
+                <p className="text-xs md:text-sm text-ink-soft/60 leading-relaxed">
+                  {member.focus}
+                </p>
+              </div>
+            </motion.div>
+          ))}
         </div>
 
-        <ScrollHint />
-      </motion.div>
+        {/* Decorative bottom connector — organic wave */}
+        <div className="mt-16 md:mt-24 flex justify-center" aria-hidden="true">
+          <svg className="w-48 md:w-64 h-3 text-navy/[0.04]" viewBox="0 0 256 12" fill="none">
+            <path d="M0 6 Q 32 0 64 6 Q 96 12 128 6 Q 160 0 192 6 Q 224 12 256 6" stroke="currentColor" strokeWidth="2" fill="none" />
+          </svg>
+        </div>
+      </div>
     </section>
   );
 }

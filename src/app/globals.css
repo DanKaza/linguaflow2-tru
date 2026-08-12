@@ -14,7 +14,7 @@
   --color-jp-red: #c8373a;
   --color-gold: #d9a441;
   --color-ink: #16110d;
-  --color-ink-soft: #6b6358;
+  --color-ink-soft: #4b5563;
   --color-line: #e7ded0;
 
   /* App palette */
@@ -41,11 +41,55 @@
   /* Fonts */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-jp: var(--font-noto-jp), "Noto Sans JP", sans-serif;
+  --font-display: var(--font-display), "Playfair Display", Georgia, serif;
 }
 
 :root {
   --font-inter: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-noto-jp: "Noto Sans JP", sans-serif;
+  --font-display: "Playfair Display", Georgia, serif;
+
+  /* Semantic surface tokens (app) — referenced by utilities below */
+  --surface-page: var(--color-warm-white);
+  --surface-card: var(--color-paper);
+  --surface-card-hover: var(--color-indigo-tint-soft);
+  --surface-inset: var(--color-indigo-tint-soft);
+  --border-default: var(--color-line);
+  --text-strong: var(--color-ink);
+  --text-muted: var(--color-ink-soft);
+}
+
+/* ============================================================
+   Dark mode — real surface + border + text token swaps.
+   Activated by <html class="dark"> (see lib/theme.tsx).
+   ============================================================ */
+.dark {
+  --color-warm-white: #0f1626;
+  --color-paper: #16203a;
+  --color-cream: #0f1626;
+  --color-ink: #f3ece0;
+  --color-ink-soft: #aab4c8;
+  --color-line: #283450;
+  --color-indigo-tint-soft: #1c2742;
+  --color-indigo-tint-2: #8fa2cf;
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --shadow-soft-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
+
+  --surface-page: #0f1626;
+  --surface-card: #16203a;
+  --surface-card-hover: #1c2742;
+  --surface-inset: #1c2742;
+  --border-default: #283450;
+  --text-strong: #f3ece0;
+  --text-muted: #aab4c8;
+}
+
+/* Smooth surface/border transitions when toggling theme */
+body,
+.bg-warm-white,
+.bg-paper,
+.border-line {
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 * {
@@ -60,11 +104,18 @@
   border-radius: 4px;
 }
 
+html {
+  margin: 0;
+  padding: 0;
+}
 body {
   background-color: var(--color-warm-white);
   color: var(--color-ink);
   font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
 }
 
 /* Japanese text rendering */
@@ -77,14 +128,15 @@ body {
   font-weight: 700;
 }
 
-/* Kanji decorative background — very low opacity (landers) */
-.kanji-bg {
-  font-family: var(--font-jp);
+/* Playfair Display — premium editorial headings for landing page */
+.font-display {
+  font-family: var(--font-display);
   font-weight: 700;
-  color: var(--color-navy);
-  opacity: 0.04;
-  user-select: none;
-  pointer-events: none;
+}
+.font-display-italic {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-style: italic;
 }
 
 /* Seigaiha wave motif — subtle */
@@ -290,6 +342,13 @@ body {
 }
 
 /* ---- utility animations (app + lander shared) ---- */
+/* ───── Scroll-down cue bounce (replaces framer-motion repeat) ───── */
+@keyframes scroll-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+.animate-scroll-bounce { animation: scroll-bounce 1.8s ease-in-out infinite; }
+
 @keyframes float-up {
   from { transform: translateY(8px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
@@ -302,6 +361,8 @@ body {
   100% { transform: scale(1.25); opacity: 0; }
 }
 .animate-pulse-ring { animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
+
 
 @keyframes typing-dot {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
@@ -346,6 +407,141 @@ body {
   50% { box-shadow: 0 10px 40px rgba(200, 55, 58, 0.22); }
 }
 .animate-glow { animation: glow-pulse 3.5s ease-in-out infinite; }
+
+/* Brushstroke subtle pulse — replaces framer-motion infinite animation with lightweight CSS */
+@keyframes brushstroke-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.animate-brushstroke-pulse { animation: brushstroke-pulse 2.5s ease-in-out infinite; animation-delay: 1s; }
+
+/* Washi paper texture — authentic Japanese paper feel */
+.bg-washi {
+  background-color: var(--color-cream);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 300px 300px;
+}
+
+/* Gold Seigaiha — for warm sections */
+.seigaiha-gold {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'%3E%3Cpath d='M0 20c5-8 15-8 20 0M20 20c5-8 15-8 20 0M-10 10c5-8 15-8 20 0M10 10c5-8 15-8 20 0M30 10c5-8 15-8 20 0' fill='none' stroke='%23d9a441' stroke-width='1.2'/%3E%3C/svg%3E");
+  background-size: 40px 20px;
+  opacity: 0.08;
+}
+
+/* Vermillion Seigaiha — accent sections */
+.seigaiha-vermillion {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20' viewBox='0 0 40 20'%3E%3Cpath d='M0 20c5-8 15-8 20 0M20 20c5-8 15-8 20 0M-10 10c5-8 15-8 20 0M10 10c5-8 15-8 20 0M30 10c5-8 15-8 20 0' fill='none' stroke='%23c8373a' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 40px 20px;
+  opacity: 0.06;
+}
+
+/* Sumi-e ink wash animation — for dramatic reveals */
+@keyframes sumi-in {
+  from { clip-path: inset(0 100% 0 0); opacity: 0; }
+  to { clip-path: inset(0 0% 0 0); opacity: 1; }
+}
+.animate-sumi-in {
+  animation: sumi-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Vermillion brushstroke border — for Japanese frames */
+.lf-brush-border {
+  position: relative;
+}
+.lf-brush-border::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--color-jp-red);
+  border-radius: inherit;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* Japanese stamp (hanko) effect for CTAs */
+.lf-hanko {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lf-hanko::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--color-jp-red);
+  border-radius: inherit;
+  opacity: 0.08;
+  transition: opacity 0.3s ease;
+}
+.lf-hanko:hover::after {
+  opacity: 0.2;
+}
+
+/* Animated seigaiha — subtle wave motion */
+@keyframes seigaiha-drift {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-8px); }
+  100% { transform: translateX(0); }
+}
+.animate-seigaiha {
+  animation: seigaiha-drift 8s ease-in-out infinite;
+}
+
+/* Torii gate decorative silhouette */
+.lf-torii-silhouette {
+  position: relative;
+}
+.lf-torii-silhouette::before {
+  content: "";
+  position: absolute;
+  background: radial-gradient(ellipse at 50% 0%, var(--color-jp-red) 0%, transparent 70%);
+  opacity: 0.03;
+  width: 200px;
+  height: 200px;
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* Hero glow gradient untuk landing page */
+.hero-glow::before {
+  content: "";
+  position: absolute;
+  top: -30%;
+  left: -20%;
+  width: 140%;
+  height: 140%;
+  background: radial-gradient(ellipse at 30% 50%, rgba(43,58,103,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+.hero-glow-vermillion::before {
+  background: radial-gradient(ellipse at 70% 50%, rgba(200,55,58,0.05) 0%, transparent 60%);
+}
+
+/* Page transition — fade + slide untuk navigasi */
+.page-enter {
+  animation: page-in 0.35s ease-out both;
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Card-in stagger animations untuk dashboard */
+@keyframes card-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-card-in { animation: card-in 0.35s ease-out both; }
+.animate-card-in-1 { animation-delay: 0.05s; }
+.animate-card-in-2 { animation-delay: 0.1s; }
+.animate-card-in-3 { animation-delay: 0.15s; }
+.animate-card-in-4 { animation-delay: 0.2s; }
+.animate-card-in-5 { animation-delay: 0.25s; }
 
 /* Lenis smooth scroll */
 html.lenis, html.lenis body { height: auto; }
@@ -394,5 +590,69 @@ html.lenis, html.lenis body { height: auto; }
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* ============================================================
+   LinguaFlow App System — semantic colors, spacing, display
+   These complement the @theme tokens and stay on-brand in
+   both light and dark mode (they reference the CSS vars).
+   ============================================================ */
+
+/* Semantic color "soft" tints — keep success/error/gold tints
+   consistent across all student pages instead of ad-hoc /10 /15. */
+.bg-success-soft { background-color: color-mix(in srgb, var(--color-success) 12%, transparent); }
+.text-success-soft { color: color-mix(in srgb, var(--color-success) 80%, var(--color-ink)); }
+.bg-error-soft { background-color: color-mix(in srgb, var(--color-error) 12%, transparent); }
+.text-error-soft { color: color-mix(in srgb, var(--color-error) 80%, var(--color-ink)); }
+.bg-gold-soft { background-color: color-mix(in srgb, var(--color-gold-app) 16%, transparent); }
+.text-gold-soft { color: color-mix(in srgb, var(--color-gold-app) 85%, var(--color-ink)); }
+.bg-vermillion-soft-tint { background-color: color-mix(in srgb, var(--color-vermillion) 12%, transparent); }
+
+/* App display font — bring the editorial Playfair feel into the
+   app shell for hero titles (cozy-Japanese-premium, not generic). */
+.font-display-app {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Explicit vertical rhythm scale — responsive: tighter on mobile */
+.lf-gap-xs { margin-top: 0.75rem; }   /* 12px */
+.lf-gap-sm { margin-top: 1rem; }       /* 16px */
+.lf-gap-md { margin-top: 1.25rem; }    /* 20px */
+.lf-gap-lg { margin-top: 1.25rem; }    /* mobile 20px */
+@media (min-width: 640px) {
+  .lf-gap-lg { margin-top: 1.5rem; }   /* desktop 24px */
+}
+
+/* Standard card padding tokens */
+.lf-pad { padding: 1.25rem; }           /* 20px */
+.lf-pad-lg { padding: 1.5rem; }         /* 24px */
+
+/* Accessible micro-label — never below 11px, always medium+ */
+.lf-micro {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.1;
+  font-weight: 500;
+}
+.lf-micro-strong {
+  font-size: 0.6875rem;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+/* Honor reduced-motion: kill infinite decorative loops */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping,
+  .animate-pulse-ring,
+  .animate-scroll-bounce,
+  .animate-float-slow,
+  .animate-float-slower,
+  .animate-waveform-bar,
+  .lf-waveform-bar,
+  [style*="repeat: Infinity"],
+  [style*="repeat:Infinity"] {
+    animation: none !important;
   }
 }

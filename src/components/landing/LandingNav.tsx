@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
+import { List, X } from "@phosphor-icons/react";
 import { ToriiMark } from "@/components/brand/Logo";
 
 const shortcuts = [
@@ -57,12 +58,13 @@ export function LandingNav() {
       initial={{ y: -90, opacity: 0 }}
       animate={{ y: hidden ? -90 : 0, opacity: hidden ? 0 : 1 }}
       transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-      className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4"
+      className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4 touch-pan-y"
     >
       <nav className="flex w-full max-w-6xl items-center justify-between gap-3 rounded-full border border-line/70 bg-cream/80 px-4 py-2.5 backdrop-blur-md shadow-soft md:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2" aria-label="LinguaFlow">
-          <ToriiMark width={22} height={22} />
+          <ToriiMark width={22} height={22} color="var(--color-jp-red)" />
           <span className="text-base font-bold tracking-tight text-navy">LinguaFlow</span>
+          <span className="jp hidden text-[10px] text-jp-red/40 sm:inline">言語</span>
         </Link>
 
         {/* Desktop shortcuts */}
@@ -86,12 +88,7 @@ export function LandingNav() {
           >
             Masuk
           </Link>
-          <Link
-            href="/register-sekolah"
-            className="rounded-full bg-navy px-4 py-1.5 text-sm font-semibold text-cream transition-colors hover:bg-navy-soft"
-          >
-            Daftar
-          </Link>
+
         </div>
 
         {/* Mobile burger */}
@@ -101,9 +98,7 @@ export function LandingNav() {
           aria-expanded={open}
           className="flex h-11 w-11 items-center justify-center rounded-full text-navy transition-colors hover:bg-navy/5 md:hidden"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-          </svg>
+          {open ? <X size={20} /> : <List size={20} />}
         </button>
       </nav>
 
@@ -135,12 +130,13 @@ export function LandingNav() {
               Masuk
             </Link>
             <Link
-              href="/register-sekolah"
+              href="/kontak"
               onClick={() => setOpen(false)}
-              className="rounded-xl bg-navy px-4 py-3 text-center text-sm font-semibold text-cream transition-colors hover:bg-navy-soft"
+              className="rounded-xl px-4 py-3 text-left text-sm font-semibold text-navy transition-colors hover:bg-navy/5"
             >
-              Daftar
+              Kontak
             </Link>
+
           </motion.div>
         )}
       </AnimatePresence>

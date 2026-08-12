@@ -124,23 +124,15 @@ function LoginForm() {
           </Link>
         </div>
 
-        <div className="my-5 flex items-center gap-3 text-xs text-ink-soft">
-          <span className="h-px flex-1 bg-line" /> atau <span className="h-px flex-1 bg-line" />
-        </div>
-
-        <Link href="/register">
-          <Button fullWidth variant="outline">
-            Daftar Akun Baru
-          </Button>
-        </Link>
       </form>
 
-      <p className="mt-4 text-center text-xs text-ink-soft">
-        Punya kode kelas?{" "}
-        <Link href="/register" className="font-semibold text-indigo hover:underline">
-          Daftar dengan Kode Kelas
-        </Link>
-      </p>
+      <div className="mt-4 rounded-card border border-line bg-paper p-4 text-center shadow-soft">
+        <p className="text-sm text-ink-soft">
+          Belum punya akun?{" "}
+          <span className="font-semibold text-ink">Minta ke admin atau guru sekolahmu</span>{" "}
+          — akun dibuat oleh sekolah.
+        </p>
+      </div>
     </>
   );
 }
