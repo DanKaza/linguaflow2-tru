@@ -168,6 +168,7 @@ Buka [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Kunci anon (client & server) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Untuk admin | Membuat/ban/hapus user via Admin API |
 | `NEXT_PUBLIC_SPEECH_API_URL` | ❌ | Base URL server speech (default `https://api.rynaqrtz.my.id`) |
+| `NEXT_PUBLIC_SPEECH_API_KEY` | ✅ (untuk Ucapan/AI Sensei) | API key server speech — dikirim sebagai header `X-API-Key` |
 
 ---
 
@@ -192,7 +193,7 @@ Tabel utama yang dipakai aplikasi (kolom mengikuti pemakaian di kode):
 ## 🎙 Speech, AI Sensei & Scoring
 
 ### Server speech eksternal
-Fitur AI (Sensei, transkripsi, terjemahan) memanggil server teman di `https://api.rynaqrtz.my.id` (bisa di-override lewat env). Semua panggilan di `src/lib/speech-api.ts` punya **timeout & pesan error bahasa Indonesia**; karena bukan layanan ber-SLA, ada proteksi anti-spam di sisi klien (`useSpeechRateLimit`) — cooldown antar request + kuota sesi.
+Fitur AI (Sensei, transkripsi, terjemahan) memanggil server teman di `https://api.rynaqrtz.my.id` (bisa di-override lewat env). Semua panggilan di `src/lib/speech-api.ts` punya **timeout & pesan error bahasa Indonesia**; karena bukan layanan ber-SLA, ada proteksi anti-spam di sisi klien (`useSpeechRateLimit`) — cooldown antar request + kuota sesi. Sejak server teman mulai mewajibkan API key, isi `NEXT_PUBLIC_SPEECH_API_KEY` di `.env.local` — tanpa key, request ditolak ("API key wajib disertakan").
 
 ### TTS gratis
 Pengucapan kata/kalimat memakai **Web Speech API** bawaan browser (suara Jepang neural di Chrome/Edge/Android) — tanpa backend & tanpa biaya (`src/lib/speech.ts`).
