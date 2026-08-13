@@ -51,97 +51,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const role = profile?.role ?? null;
 
   /**
-   * Fetch or auto-create a profile for the given user.
+   * Ambil profile dari DB — HANYA SELECT.
    *
-   * NOTE: Kadang `maybeSingle()` mengembalikan error `{}` (empty object)
-   * ketika cookie JWT belum ready. Kita treat error sebagai "belum ada profile".
+   * Row profile dibuat otomatis oleh trigger `handle_new_user`
+   * (lihat supabase/migrations/setup-db.sql) saat user baru terdaftar
+   * di auth.users. Karena RLS aktif, client TIDAK boleh INSERT ke tabel
+   * `profiles` — cukup baca baris milik user yang sedang login.
+   *
+   * Catatan: pastikan ada policy SELECT untuk `profiles` yang mengizinkan
+   * user membaca barisnya sendiri, misalnya:
+   *   create policy "Murid baca profil sendiri" on public.profiles
+   *     for select to authenticated using (auth.uid() = id);
    */
-  const ensureProfile = useCallback(
-    async (
-      userId: string,
-      meta?: { role?: string; full_name?: string; email?: string | null },
-    ) => {
-      try {
-        // 1) Try to find existing profile
-        const result = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .maybeSingle();
+  const fetchProfile = useCallback(
+    async (userId: string): Promise<Profile | null> => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
 
-        const existing = result.data;
-        const findError = result.error;
-
-        // Log error detail untuk debugging (stringify karena kadang {} )
-        if (findError) {
-          console.warn(
-            "[Auth] find profile returned error (akan coba insert):",
-            JSON.stringify(findError),
-          );
-        }
-
-        if (existing) {
-          setProfile(existing as Profile);
-          return;
-        }
-
-        // 2) Safety net: auto-create missing profile
-        const newProfile = {
-          id: userId,
-          role: (meta?.role as Role) || "murid",
-          full_name: meta?.full_name || meta?.email?.split("@")[0] || "User",
-          email: meta?.email || null,
-        };
-
-        const insertResult = await supabase
-          .from("profiles")
-          .insert(newProfile)
-          .select()
-          .maybeSingle();
-
-        const inserted = insertResult.data;
-        const insertError = insertResult.error;
-
-        if (insertError) {
-          // Error apapun (duplicate key 23505, recursive RLS 42P17, dsb)
-          // → coba SELECT ulang, mungkin profile sudah ada
-          const { data: retry, error: retryError } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", userId)
-            .maybeSingle();
-
-          if (retry) {
-            setProfile(retry as Profile);
-          } else {
-            // SELECT juga gagal — log error detail
-            console.error(
-              "[Auth] Insert + retry SELECT both failed:",
-              { insertCode: (insertError as any)?.code, insertMsg: insertError.message, retryError: retryError ? JSON.stringify(retryError) : null },
-            );
-          }
-          return;
-        }
-
-        if (inserted) {
-          setProfile(inserted as Profile);
-        }
-      } catch (err) {
-        console.error("[Auth] ensureProfile exception:", err);
+      if (error) {
+        console.warn("[Auth] Gagal membaca profile:", JSON.stringify(error));
+        return null;
       }
+      return (data as Profile) ?? null;
     },
     [supabase],
   );
 
   const refreshProfile = useCallback(async () => {
-    if (user) {
-      await ensureProfile(user.id, {
-        role: user.user_metadata?.role,
-        full_name: user.user_metadata?.full_name,
-        email: user.email,
-      });
-    }
-  }, [user, ensureProfile]);
+    if (!user) return;
+    const fresh = await fetchProfile(user.id);
+    if (fresh) setProfile(fresh);
+  }, [user, fetchProfile]);
+
+  // Ambil profile saat user/login session sudah tersedia.
+  const loadProfileFor = useCallback(
+    async (userId: string) => {
+      const found = await fetchProfile(userId);
+      setProfile(found);
+      return found;
+    },
+    [fetchProfile],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -154,11 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (mounted && session?.user) {
         setUser(session.user);
-        await ensureProfile(session.user.id, {
-          role: session.user.user_metadata?.role,
-          full_name: session.user.user_metadata?.full_name,
-          email: session.user.email,
-        });
+        await loadProfileFor(session.user.id);
       }
       if (mounted) {
         setLoading(false);
@@ -177,11 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === "SIGNED_IN") {
           setUser(session?.user ?? null);
           if (session?.user) {
-            await ensureProfile(session.user.id, {
-              role: session.user.user_metadata?.role,
-              full_name: session.user.user_metadata?.full_name,
-              email: session.user.email,
-            });
+            await loadProfileFor(session.user.id);
             // Don't call router.refresh() here — it creates a race condition
             // with the redirect effect in LoginForm.
             // The state changes alone will trigger the redirect.
@@ -203,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [supabase, ensureProfile, router]);
+  }, [supabase, loadProfileFor, router]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -218,6 +163,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(
     async (email: string, password: string, fullName: string) => {
+      // Metadata dikirim supaya trigger `handle_new_user` mengisi
+      // full_name & role (default 'murid') di tabel `profiles`.
       const { error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -226,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (authError) return { error: authError.message };
 
+      // Profile dibuat otomatis oleh trigger DB — tidak perlu INSERT manual.
       return { error: null };
     },
     [supabase],
