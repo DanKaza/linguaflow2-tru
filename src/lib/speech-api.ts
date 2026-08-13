@@ -11,6 +11,25 @@
 const API_BASE =
   process.env.NEXT_PUBLIC_SPEECH_API_URL ?? "https://api.rynaqrtz.my.id";
 
+/**
+ * API key server speech (dari teman) — dikirim sebagai header `X-API-Key`.
+ * Server menolak request tanpa key (pesan "API key wajib disertakan").
+ */
+const API_KEY = process.env.NEXT_PUBLIC_SPEECH_API_KEY ?? "";
+
+/** Header bersama untuk semua request — kosong kalau key belum diset. */
+function apiHeaders(): Record<string, string> {
+  return API_KEY ? { "X-API-Key": API_KEY } : {};
+}
+
+/** Terjemahkan pesan error API key ke bahasa yang ramah pengguna. */
+function translateKeyError(msg: string): string {
+  if (/api key wajib|apikey|invalid|dicabut|tidak valid/i.test(msg)) {
+    return "Server speech belum punya API key yang benar. Hubungi pemilik API.";
+  }
+  return msg;
+}
+
 export interface TranscribeOptions {
   /** Kode bahasa ISO 639-1. Default: "ja". */
   language?: string;
@@ -48,6 +67,7 @@ export async function transcribeAudio(
 
     const res = await fetch(`${API_BASE}/api/tools/transcribe`, {
       method: "POST",
+      headers: apiHeaders(),
       body: form,
       signal: controller.signal,
     });
@@ -56,7 +76,9 @@ export async function transcribeAudio(
 
     if (!data || data.status !== true) {
       throw new Error(
-        data?.message || `Server speech merespons dengan HTTP ${res.status}.`,
+        translateKeyError(
+          data?.message || `Server speech merespons dengan HTTP ${res.status}.`,
+        ),
       );
     }
 
@@ -121,6 +143,7 @@ export async function askSensei(
 
     const res = await fetch(`${API_BASE}/api/ai/sensei`, {
       method: "POST",
+      headers: apiHeaders(),
       body: form,
       signal: controller.signal,
     });
@@ -136,7 +159,7 @@ export async function askSensei(
           "Server suara sedang dibatasi (TTS Google). Tunggu sekitar 1–2 menit, lalu coba lagi.",
         );
       }
-      throw new Error(msg);
+      throw new Error(translateKeyError(msg));
     }
 
     const userText = String(data.result?.user_text ?? "").trim();
@@ -204,13 +227,16 @@ export async function translateJaToId(
     });
 
     const res = await fetch(`${API_BASE}/api/tools/tts?${params.toString()}`, {
+      headers: apiHeaders(),
       signal: controller.signal,
     });
 
     const data = await res.json().catch(() => null);
     if (!data || data.status !== true) {
       throw new Error(
-        data?.message || `Server terjemahan merespons dengan HTTP ${res.status}.`,
+        translateKeyError(
+          data?.message || `Server terjemahan merespons dengan HTTP ${res.status}.`,
+        ),
       );
     }
 
