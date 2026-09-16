@@ -1,27 +1,29 @@
 "use client";
 
 /**
- * Klien Suara Live AI Sensei — langsung ke Google Gemini Live API.
+ * Klien Suara Live AI Sensei — via API LinguaFlow (`WS /sensei/live`).
  *
- * Protokol: WebSocket `BidiGenerateContent` (v1beta).
- *  - Klien kirim `{ setup }`  → server balas `{ setupComplete }`
- *  - Mic PCM16 @16 kHz base64 → `{ realtimeInput.mediaChunks }`
- *  - Server kirim `{ serverContent }`: `modelTurn.parts[].inlineData`
- *    (audio PCM16 @24 kHz), `inputTranscription`, `outputTranscription`,
- *    `interrupted`, `turnComplete`.
+ * Browser TIDAK memegang kredensial admin: ia meminta accessToken berumur
+ * pendek dari broker server `/api/sensei/live-token`, lalu membuka WebSocket
+ * langsung ke `WS /sensei/live?token=<JWT>&voice=<id>` (lihat api.md).
  *
- * API key TIDAK pernah masuk bundle: browser memintanya dari broker
- * server `/api/sensei/live-token` yang membaca `GEMINI_API_KEY` dari env.
+ * Protokol (semua frame JSON):
+ *  → kirim : { type:"audio", data:<base64 pcm16 @16kHz> } | { type:"turn", text } | { type:"close" }
+ *  ← terima:
+ *    - ready             → sesi siap (model + voice + sessionId)
+ *    - audio             → chunk PCM16 @24 kHz (base64) untuk diputar
+ *    - inputTranscript   → apa yang murid ucapkan (parsial)
+ *    - outputTranscript  → teks yang sedang diucapkan Sensei (parsial)
+ *    - interrupted       → murid menyela → hentikan playback
+ *    - turnComplete      → satu giliran selesai (userText/aiText/language)
+ *    - goingAway / error / closed
  *
- * Event ke UI (sama seperti desain awal, halaman tidak perlu berubah):
- *  - ready / listening / speaking (via onStatusChange)
- *  - onUserTranscript  → apa yang murid ucapkan (parsial)
- *  - onOutputText      → teks yang sedang diucapkan Sensei (parsial)
- *  - onTurnComplete    → satu giliran selesai (bubble chat permanen)
- *  - onInterrupted     → murid menyela → playback dibuang
- *  - onError / onClosed
+ * Catatan handshake: `ready` adalah pesan pertama dari server dan satu-satunya
+ * yang me-resolve open(). Referensi resolver diambil & dinolkan SEBELUM
+ * pembersihan timer agar tidak pernah terbuang (pelajaran dari bug lama).
  */
 
+import { API_BASE, getLiveConfig } from "@/lib/linguaflow-api";
 import { startMicCapture, LiveAudioPlayer, type MicCapture } from "@/lib/live-audio";
 
 export interface LiveEvents {
@@ -38,49 +40,19 @@ export interface LiveEvents {
 
 export type LiveStatus = "connecting" | "ready" | "listening" | "speaking" | "closed" | "error";
 
-/** Model live audio native — diverifikasi tersedia untuk key Gemini API. */
-export const GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest";
-
-/* ─────────────────────────────────────────────
- * Tipe pesan protokol Google (subset yang dipakai)
- * ───────────────────────────────────────────── */
-
-interface SetupMessage {
-  setup: {
-    model: string;
-    generationConfig: {
-      responseModalities: ["AUDIO"];
-      speechConfig?: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: string } };
-      };
-    };
-    systemInstruction: { parts: { text: string }[] };
-    inputAudioTranscription: Record<string, never>;
-    outputAudioTranscription: Record<string, never>;
-  };
+interface ServerEvent {
+  type: string;
+  data?: string;
+  text?: string;
+  finished?: boolean;
+  voice?: string;
+  model?: string;
+  userText?: string;
+  aiText?: string;
+  language?: string;
+  message?: string;
+  reason?: string;
 }
-
-interface ServerContent {
-  modelTurn?: { parts?: { inlineData?: { mimeType?: string; data?: string }; text?: string }[] };
-  inputTranscription?: { text?: string };
-  outputTranscription?: { text?: string };
-  interrupted?: boolean;
-  turnComplete?: boolean;
-}
-
-interface GoogleEvent {
-  setupComplete?: Record<string, never>;
-  serverContent?: ServerContent;
-  goAway?: { timeLeft?: string };
-  error?: { code?: number; message?: string };
-}
-
-/** Persona Sensei — diucapkan bahasa Indonesia, sesekali latihan bahasa Jepang. */
-const SENSEI_SYSTEM_PROMPT =
-  "Kamu adalah Sensei, guru bahasa Jepang yang ramah untuk murid SMK Indonesia di aplikasi LinguaFlow. " +
-  "Bicara santai dan memotivasi, jawab ringkas (1–3 kalimat). Bahasa utama: Indonesia. " +
-  "Kalau murid ingin berlatih, gunakan bahasa Jepang sederhana (N5–N3) dan jelaskan artinya dalam bahasa Indonesia. " +
-  "Kamu juga bisa menjawab pertanyaan umum seputar budaya dan kosakata Jepang.";
 
 export class SenseiLiveSession {
   private ws: WebSocket | null = null;
@@ -88,23 +60,22 @@ export class SenseiLiveSession {
   private player = new LiveAudioPlayer();
   private events: LiveEvents;
   private voice: string;
-  private model = GEMINI_LIVE_MODEL;
   private status: LiveStatus = "closed";
-  /** Teks balasan yang sedang menumpuk antara chunk outputTranscription. */
+  /** Teks balasan yang sedang menumpuk antara chunk outputTranscript. */
   private outputBuffer = "";
   private turnUserId = "";
   /** Pengaman dobel-tutup (close bisa dipanggil dari beberapa jalur). */
   private closed = false;
-  /** Resolve promise open() saat setupComplete tiba dari server. */
+  /** Resolve promise open() saat event `ready` tiba dari server. */
   private setupResolve: (() => void) | null = null;
-  /** Reject promise open() bila sesi ditutup di tengah handshake. */
+  /** Reject promise open() bila sesi ditutup/gagal di tengah handshake. */
   private setupReject: ((err: Error) => void) | null = null;
-  /** Timer handshake — dibersihkan saat setupComplete / close. */
+  /** Timer handshake — dibersihkan saat ready / gagal / close. */
   private setupTimer: number | null = null;
 
   constructor(events: LiveEvents, voice?: string) {
     this.events = events;
-    this.voice = voice ?? "Aoede";
+    this.voice = voice ?? "";
   }
 
   private setStatus(s: LiveStatus) {
@@ -112,93 +83,82 @@ export class SenseiLiveSession {
     this.events.onStatusChange?.(s);
   }
 
-  /** Buka sesi: ambil API key dari broker, lalu handshake ke Gemini. */
+  /** Buka sesi: ambil token dari broker, lalu connect WS ke LinguaFlow. */
   async open(): Promise<void> {
     this.closed = false;
     this.setStatus("connecting");
 
-    // 1) Ambil key dari broker server (key TIDAK pernah masuk bundle JS).
-    let apiKey: string;
-    try {
-      const res = await fetch("/api/sensei/live-token", { cache: "no-store" });
-      const body = (await res.json().catch(() => null)) as { apiKey?: string; error?: string };
-      if (!res.ok || !body?.apiKey) {
-        throw new Error(body?.error ?? "Kunci live tidak tersedia.");
+    // 1) Pilih voice default dari config bila belum ditentukan.
+    if (!this.voice) {
+      try {
+        const cfg = await getLiveConfig();
+        this.voice = cfg.defaultVoice ?? cfg.voices[0]?.id ?? "Aoede";
+      } catch {
+        this.voice = "Aoede";
       }
-      apiKey = body.apiKey;
-    } catch (err) {
-      this.setStatus("error");
-      this.events.onError?.(err instanceof Error ? err.message : "Gagal mengambil kunci sesi live.");
-      throw new Error("Gagal mengambil kunci sesi live.");
     }
 
-    // 2) Buka WebSocket ke Gemini Live API.
-    const wsUrl =
-      "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=" +
-      encodeURIComponent(apiKey);
+    // 2) Ambil token admin dari broker (login terjadi di server saja).
+    let token: string;
+    try {
+      const res = await fetch("/api/sensei/live-token", { cache: "no-store" });
+      const body = (await res.json().catch(() => null)) as { accessToken?: string; error?: string };
+      if (!res.ok || !body?.accessToken) {
+        throw new Error(body?.error ?? "Token live tidak tersedia.");
+      }
+      token = body.accessToken;
+    } catch (err) {
+      this.setStatus("error");
+      this.events.onError?.(err instanceof Error ? err.message : "Gagal mengambil token live.");
+      throw new Error("Gagal mengambil token live.");
+    }
 
+    // 3) Buka WebSocket.
+    const wsUrl = `${API_BASE.replace(/^http/, "ws")}/sensei/live?token=${encodeURIComponent(token)}&voice=${encodeURIComponent(this.voice)}`;
     const ws = new WebSocket(wsUrl);
     this.ws = ws;
 
     // PENTING: handler pesan dipasang SEKARANG, bukan setelah await —
-    // setupComplete adalah pesan pertama dari server dan satu-satunya
-    // yang bisa me-resolve promise di bawah.
+    // `ready` adalah pesan pertama dari server dan satu-satunya yang
+    // me-resolve promise di bawah.
     ws.onmessage = (e) => this.handleEvent(e.data as string);
 
     await new Promise<void>((resolve, reject) => {
-      // Satu timer untuk seluruh handshake (buka socket + setupComplete).
+      // Satu timer untuk seluruh handshake (buka socket + sesi siap).
       this.setupTimer = window.setTimeout(() => {
         this.setupTimer = null;
         this.setupResolve = null;
         this.setupReject = null;
         this.setStatus("error");
-        this.events.onError?.("Waktu habis — Gemini Live tidak merespons.");
+        this.events.onError?.("Waktu habis — server live tidak merespons.");
         try {
           ws.close();
         } catch {
           /* ignore */
         }
-        reject(new Error("Waktu habis — Gemini Live tidak merespons."));
+        reject(new Error("Waktu habis — server live tidak merespons."));
       }, 20_000);
       this.setupResolve = resolve;
       this.setupReject = reject;
 
-      // 3) Handshake setup begitu socket terbuka.
-      ws.onopen = () => {
-        const setup: SetupMessage = {
-          setup: {
-            model: `models/${this.model}`,
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-              speechConfig: {
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: this.voice } },
-              },
-            },
-            systemInstruction: { parts: [{ text: SENSEI_SYSTEM_PROMPT }] },
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-          },
-        };
-        ws.send(JSON.stringify(setup));
-      };
+      // Tidak ada pesan setup yang perlu dikirim — server mengirim `ready`
+      // begitu sesi Gemini-nya siap.
       ws.onerror = () => {
-        this.clearSetupTimer();
-        this.setupResolve = null;
-        this.setupReject = null;
-        reject(new Error("Tidak bisa terhubung ke Gemini Live. Periksa koneksi internetmu."));
+        this.clearSetup();
+        reject(new Error("Tidak bisa terhubung ke sesi live. Periksa koneksi internetmu."));
       };
       ws.onclose = (e) => {
-        this.clearSetupTimer();
-        this.setupResolve = null;
-        this.setupReject = null;
+        this.clearSetup();
         if (this.closed) return;
         this.closed = true;
         const reason =
-          e.code === 1009
-            ? "Sesi ditolak — kredensial live tidak valid."
-            : e.code === 1011
-              ? "Server Gemini mengalami gangguan. Coba lagi sebentar."
-              : "Sesi live ditutup.";
+          e.code === 4401
+            ? "Token live tidak valid atau kedaluwarsa."
+            : e.code === 4403
+              ? "Akun API bukan admin — live voice ditolak server."
+              : e.code === 4500
+                ? "Sesi Gemini gagal dibuka di server. Coba lagi sebentar."
+                : "Sesi live ditutup.";
         this.setStatus("error");
         this.events.onError?.(reason);
         reject(new Error(reason));
@@ -215,11 +175,11 @@ export class SenseiLiveSession {
     ws.onerror = () => {
       if (!this.closed) {
         this.setStatus("error");
-        this.events.onError?.("Koneksi ke Gemini Live terputus.");
+        this.events.onError?.("Koneksi ke server live terputus.");
       }
     };
 
-    // 4) Mulai tangkap mic (AudioContext 16 kHz, ini memicu resume gesture-safely).
+    // 4) Mulai tangkap mic (AudioContext 16 kHz + worklet).
     try {
       this.mic = await startMicCapture((pcm) => this.sendAudio(pcm));
       await this.mic.start();
@@ -229,108 +189,117 @@ export class SenseiLiveSession {
       return;
     }
 
-    // setupComplete yang akan memindahkan status ke "listening".
+    // Status "listening" dipicu oleh event `ready` di handleEvent().
   }
 
   private handleEvent(raw: string) {
     if (this.closed) return;
-    let ev: GoogleEvent;
+    let ev: ServerEvent;
     try {
-      ev = JSON.parse(raw) as GoogleEvent;
+      ev = JSON.parse(raw) as ServerEvent;
     } catch {
       return;
     }
 
-    if (ev.setupComplete) {
-      // URUTAN PENTING: ambil & nol-kan resolver SEBELUM clearSetupTimer —
-      // jangan sampai referensinya terbuang sebelum dipanggil.
-      const resolve = this.setupResolve;
-      this.setupResolve = null;
-      this.clearSetupTimer();
-      this.setStatus("listening");
-      this.events.onReady?.({ voice: this.voice, model: this.model });
-      resolve?.();
-      return;
-    }
-
-    if (ev.serverContent) {
-      const sc = ev.serverContent;
-
-      if (sc.inputTranscription?.text) {
-        this.turnUserId += sc.inputTranscription.text;
-        this.events.onUserTranscript?.(this.turnUserId);
+    switch (ev.type) {
+      case "ready": {
+        // URUTAN PENTING: ambil & nol-kan resolver SEBELUM clearSetup —
+        // jangan sampai referensinya terbuang sebelum dipanggil.
+        const resolve = this.setupResolve;
+        this.setupResolve = null;
+        this.setupReject = null;
+        this.clearSetupTimer();
+        if (ev.voice) this.voice = ev.voice;
+        this.setStatus("listening");
+        this.events.onReady?.({ voice: this.voice, model: ev.model });
+        resolve?.();
+        break;
       }
-      if (sc.outputTranscription?.text) {
-        this.outputBuffer += sc.outputTranscription.text;
-        this.events.onOutputText?.(this.outputBuffer, false);
-      }
-      for (const p of sc.modelTurn?.parts ?? []) {
-        if (p.inlineData?.data) {
-          this.player.enqueue(p.inlineData.data);
+      case "audio":
+        if (ev.data) {
+          this.player.enqueue(ev.data);
           this.setStatus("speaking");
         }
-      }
-      if (sc.interrupted) {
+        break;
+      case "inputTranscript":
+        if (ev.text) {
+          this.turnUserId = ev.text;
+          this.events.onUserTranscript?.(ev.text);
+        }
+        break;
+      case "outputTranscript":
+        if (ev.text) {
+          this.outputBuffer += ev.text;
+          this.events.onOutputText?.(ev.text, ev.finished === true);
+        }
+        break;
+      case "interrupted":
         this.player.interrupt();
         this.outputBuffer = "";
         this.setStatus("listening");
         this.events.onInterrupted?.();
-      }
-      if (sc.turnComplete) {
-        const userText = this.turnUserId.trim();
-        const aiText = this.outputBuffer.trim();
-        this.turnUserId = "";
+        break;
+      case "turnComplete": {
+        const userText = (ev.userText ?? this.turnUserId).trim();
+        const aiText = (ev.aiText ?? this.outputBuffer).trim();
         this.outputBuffer = "";
+        this.turnUserId = "";
         this.setStatus("listening");
         if (userText || aiText) {
-          this.events.onTurnComplete?.({ userText, aiText, language: "unknown" });
+          this.events.onTurnComplete?.({ userText, aiText, language: ev.language ?? "unknown" });
         }
+        break;
       }
-      return;
-    }
-
-    if (ev.goAway) {
-      this.events.onError?.("Sesi live hampir berakhir di server — mulai sesi baru untuk melanjutkan.");
-      return;
-    }
-
-    if (ev.error) {
-      this.setStatus("error");
-      this.events.onError?.(translateGeminiError(ev.error));
+      case "text":
+        // Teks model di luar transkrip — tampilkan bila belum ada output.
+        if (ev.text && !this.outputBuffer) this.events.onOutputText?.(ev.text, true);
+        break;
+      case "goingAway":
+        this.events.onError?.(
+          "Sesi live hampir mencapai batas server — mulai sesi baru untuk melanjutkan.",
+        );
+        break;
+      case "error":
+        this.setStatus("error");
+        this.events.onError?.(ev.message ?? "Terjadi kesalahan di sesi live.");
+        break;
+      case "closed":
+        if (!this.closed) {
+          this.closed = true;
+          this.setStatus("closed");
+          this.events.onClosed?.(ev.reason ?? "Sesi berakhir.");
+        }
+        break;
     }
   }
 
   /** Kirim chunk mic (PCM16 @16 kHz base64) — dipanggil otomatis oleh capture. */
   sendAudio(pcmBase64: string) {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws.send(
-      JSON.stringify({
-        realtimeInput: {
-          mediaChunks: [{ mimeType: "audio/pcm;rate=16000", data: pcmBase64 }],
-        },
-      }),
-    );
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "audio", data: pcmBase64 }));
+    }
   }
 
   /** Kirim teks yang HARUS dijawab model (dipakai input teks di mode live). */
   sendTurn(text: string) {
-    if (this.ws?.readyState !== WebSocket.OPEN || !text.trim()) return;
-    this.ws.send(
-      JSON.stringify({
-        clientContent: {
-          turns: [{ role: "user", parts: [{ text: text.trim() }] }],
-          turnComplete: true,
-        },
-      }),
-    );
+    if (this.ws?.readyState === WebSocket.OPEN && text.trim()) {
+      this.ws.send(JSON.stringify({ type: "turn", text: text.trim() }));
+    }
   }
 
-  /** Bersihkan timer handshake (dipanggil saat selesai/gagal/dibatalkan). */
+  /** Bersihkan timer handshake tanpa menyentuh resolver. */
   private clearSetupTimer() {
     if (this.setupTimer !== null) {
       window.clearTimeout(this.setupTimer);
       this.setupTimer = null;
     }
+  }
+
+  /** Bersihkan timer + referensi promise (jalur gagal handshake). */
+  private clearSetup() {
+    this.clearSetupTimer();
+    this.setupResolve = null;
+    this.setupReject = null;
   }
 
   /** Tutup sesi & bersihkan audio. */
@@ -342,12 +311,14 @@ export class SenseiLiveSession {
     this.setupResolve = null;
     this.setupReject = null;
     rejectPending?.(new Error("Sesi ditutup sebelum selesai disiapkan."));
+
     if (this.closed) {
       this.cleanup();
       return;
     }
     this.closed = true;
     try {
+      this.ws?.send(JSON.stringify({ type: "close" }));
       this.ws?.close();
     } catch {
       /* ignore */
@@ -372,20 +343,4 @@ export class SenseiLiveSession {
   getVoice(): string {
     return this.voice;
   }
-}
-
-/** Terjemahkan pesan error Google ke bahasa yang ramah murid. */
-function translateGeminiError(err: { code?: number; message?: string }): string {
-  const code = err.code ?? 0;
-  const raw = err.message ?? "";
-  if (code === 429 || /quota|RESOURCE_EXHAUSTED/i.test(raw)) {
-    return "Kuota sesi live Gemini habis untuk saat ini — coba lagi nanti.";
-  }
-  if (code === 401 || code === 403 || /permission|api key|unauthenticated/i.test(raw)) {
-    return "Kredensial live ditolak Google — periksa GEMINI_API_KEY di server.";
-  }
-  if (code === 500 || code === 503 || /overloaded|unavailable/i.test(raw)) {
-    return "Server Gemini sedang sibuk. Coba lagi sebentar.";
-  }
-  return raw ? `Kesalahan sesi live: ${raw}` : "Terjadi kesalahan di sesi live.";
 }

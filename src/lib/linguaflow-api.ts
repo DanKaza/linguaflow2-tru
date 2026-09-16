@@ -5,9 +5,9 @@
  *
  * Menggantikan server speech lama (api.rynaqrtz.my.id). Semua endpoint publik
  * (TTS / STT / Translate / Sensei chat) dipanggil langsung dari browser;
- * Suara Live berjalan langsung ke Gemini Live API — API key-nya di-broker
- * lewat route Next.js `/api/sensei/live-token` (key tidak pernah masuk bundle
- * client, dibaca dari env server GEMINI_API_KEY).
+ * Suara Live membuka WebSocket ke `WS /sensei/live` dengan accessToken admin
+ * yang di-broker lewat route Next.js `/api/sensei/live-token` (kredensial
+ * tidak pernah menyentuh client).
  *
  * Semua request punya timeout & pesan error bahasa Indonesia yang siap
  * ditampilkan — mengikuti format error baku API: { error, code }.
@@ -242,9 +242,7 @@ export async function senseiChat(
 
 /* ─────────────────────────────────────────────
  * Live config — GET /sensei/live/config (tanpa auth)
- * Catatan: dipakai untuk inspeksi/monitoring saja. Suara Live kini
- * berjalan langsung ke Gemini Live API (lihat src/lib/sensei-live.ts);
- * halaman /m/sensei memakai daftar voice prebuilt Gemini (GEMINI_VOICES).
+ * Dipakai /m/sensei untuk daftar voice & suara bawaan.
  * ───────────────────────────────────────────── */
 
 export interface LiveVoice {
@@ -261,40 +259,4 @@ export async function getLiveConfig(timeoutMs = 10_000): Promise<{ model?: strin
   return { model: data.model, defaultVoice: data.defaultVoice, voices: Array.isArray(data.voices) ? data.voices : [] };
 }
 
-/* ─────────────────────────────────────────────
- * Voice prebuilt Gemini Live (dipakai /m/sensei)
- * Daftar resmi: https://ai.google.dev/gemini-api/docs/live-guide (id = voiceName)
- * ───────────────────────────────────────────── */
 
-export const GEMINI_VOICES: LiveVoice[] = [
-  { id: "Zephyr", name: "Zephyr", description: "Cerah" },
-  { id: "Puck", name: "Puck", description: "Ceria" },
-  { id: "Charon", name: "Charon", description: "Informatif" },
-  { id: "Kore", name: "Kore", description: "Tegas" },
-  { id: "Fenrir", name: "Fenrir", description: "Mudah bergairah" },
-  { id: "Leda", name: "Leda", description: "Muda" },
-  { id: "Orus", name: "Orus", description: "Tegas" },
-  { id: "Aoede", name: "Aoede", description: "Membawa angin" },
-  { id: "Callirrhoe", name: "Callirrhoe", description: "Santai" },
-  { id: "Autonoe", name: "Autonoe", description: "Cerdas" },
-  { id: "Enceladus", name: "Enceladus", description: "Bernapas" },
-  { id: "Iapetus", name: "Iapetus", description: "Jernih" },
-  { id: "Umbriel", name: "Umbriel", description: "Santai" },
-  { id: "Algieba", name: "Algieba", description: "Lembut" },
-  { id: "Despina", name: "Despina", description: "Cerah" },
-  { id: "Erinome", name: "Erinome", description: "Bersih" },
-  { id: "Algenib", name: "Algenib", description: "Berat" },
-  { id: "Rasalgethi", name: "Rasalgethi", description: "Informatif" },
-  { id: "Laomedeia", name: "Laomedeia", description: "Mengikuti arus" },
-  { id: "Achernar", name: "Achernar", description: "Lembut" },
-  { id: "Alnilam", name: "Alnilam", description: "Tegas" },
-  { id: "Schedar", name: "Schedar", description: "Bahkan" },
-  { id: "Gacrux", name: "Gacrux", description: "Dewasa" },
-  { id: "Pulcherrima", name: "Pulcherrima", description: "Terbuka" },
-  { id: "Achird", name: "Achird", description: "Ramah" },
-  { id: "Zubenelgenubi", name: "Zubenelgenubi", description: "Santai" },
-  { id: "Vindemiatrix", name: "Vindemiatrix", description: "Penyayang" },
-  { id: "Sadachbia", name: "Sadachbia", description: "Ceria" },
-  { id: "Sadaltager", name: "Sadaltager", description: "Terpelajar" },
-  { id: "Sulafat", name: "Sulafat", description: "Hangat" },
-];

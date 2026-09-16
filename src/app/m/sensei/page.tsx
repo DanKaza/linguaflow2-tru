@@ -27,8 +27,9 @@ import {
   synthesizeTts,
   senseiChat,
   translateText,
-  GEMINI_VOICES,
+  getLiveConfig,
   type SenseiHistoryItem,
+  type LiveVoice,
 } from "@/lib/linguaflow-api";
 import { romanizeJapanese } from "@/lib/romaji";
 import { SenseiLiveSession, type LiveStatus } from "@/lib/sensei-live";
@@ -522,9 +523,27 @@ function LiveMode({
   const [status, setStatus] = useState<LiveStatus>("closed");
   const [partialUser, setPartialUser] = useState("");
   const [partialSensei, setPartialSensei] = useState("");
-  // Daftar voice prebuilt Gemini (statik — sama untuk semua key API).
-  // Voice bawaan session bila user belum memilih: Aoede.
-  const [voiceId, setVoiceId] = useState("Aoede");
+  // Daftar voice prebuilt dari GET /sensei/live/config (dimuat sekali).
+  // Voice bawaan session bila user belum memilih / config gagal: Aoede.
+  const [voices, setVoices] = useState<LiveVoice[]>([]);
+  const [voiceId, setVoiceId] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    getLiveConfig()
+      .then((cfg) => {
+        if (!mounted) return;
+        setVoices(cfg.voices);
+        const fallback = cfg.defaultVoice ?? cfg.voices[0]?.id ?? "Aoede";
+        setVoiceId((cur) => cur || fallback);
+      })
+      .catch(() => {
+        /* config gagal — session fallback ke "Aoede" */
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function startLive() {
     setApiError(null);
@@ -660,8 +679,9 @@ function LiveMode({
                 <MicOff size={12} /> Perlu izin mikrofon & koneksi stabil
               </p>
 
-              {/* Pemilih suara (voice prebuilt Gemini Live) */}
-              <label className="mt-4 flex w-full items-center gap-2 rounded-xl border border-line bg-paper px-3 py-2 shadow-soft">
+              {/* Pemilih suara (dari GET /sensei/live/config) */}
+              {voices.length > 0 && (
+                <label className="mt-4 flex w-full items-center gap-2 rounded-xl border border-line bg-paper px-3 py-2 shadow-soft">
                   <AudioLines size={14} className="shrink-0 text-indigo" />
                   <select
                     value={voiceId}
@@ -669,7 +689,7 @@ function LiveMode({
                     className="w-full bg-transparent text-xs font-semibold text-ink outline-none"
                     aria-label="Pilih suara Sensei"
                   >
-                    {GEMINI_VOICES.map((v) => (
+                    {voices.map((v) => (
                       <option key={v.id} value={v.id}>
                         {v.name ?? v.id}
                         {v.description ? ` — ${v.description}` : ""}
@@ -677,6 +697,7 @@ function LiveMode({
                     ))}
                   </select>
                 </label>
+              )}
             </>
           )}
         </div>
