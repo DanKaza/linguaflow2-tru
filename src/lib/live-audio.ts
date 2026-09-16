@@ -33,6 +33,9 @@ export async function startMicCapture(
 
   // SampleRate 16 kHz diminta langsung — Chrome/Edge/Firefox resample sendiri.
   const ctx = new AudioContext({ sampleRate: 16000 });
+  // Kebijakan autoplay: context bisa mulai suspended — resume sebelum worklet dipasang
+  // supaya chunk tidak hilang diam-diam (sesi "tersambung tapi mati").
+  if (ctx.state === "suspended") await ctx.resume();
   await ctx.audioWorklet.addModule("/pcm-worklet.js");
 
   const source = ctx.createMediaStreamSource(stream);

@@ -95,6 +95,10 @@ export class SenseiLiveSession {
   private turnUserId = "";
   /** Pengaman dobel-tutup (close bisa dipanggil dari beberapa jalur). */
   private closed = false;
+  /** Resolve promise open() saat setupComplete tiba dari server. */
+  private setupResolve: (() => void) | null = null;
+  /** Timer handshake — dibersihkan saat setupComplete / close. */
+  private setupTimer: number | null = null;
 
   constructor(events: LiveEvents, voice?: string) {
     this.events = events;
@@ -134,14 +138,27 @@ export class SenseiLiveSession {
     const ws = new WebSocket(wsUrl);
     this.ws = ws;
 
+    // PENTING: handler pesan dipasang SEKARANG, bukan setelah await —
+    // setupComplete adalah pesan pertama dari server dan satu-satunya
+    // yang bisa me-resolve promise di bawah.
+    ws.onmessage = (e) => this.handleEvent(e.data as string);
+
     await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
+      // Satu timer untuk seluruh handshake (buka socket + setupComplete).
+      this.setupTimer = window.setTimeout(() => {
+        this.setStatus("error");
+        this.events.onError?.("Waktu habis — Gemini Live tidak merespons.");
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
         reject(new Error("Waktu habis — Gemini Live tidak merespons."));
       }, 20_000);
+      this.setupResolve = resolve;
 
+      // 3) Handshake setup begitu socket terbuka.
       ws.onopen = () => {
-        window.clearTimeout(timer);
-        // 3) Handshake setup begitu socket terbuka.
         const setup: SetupMessage = {
           setup: {
             model: `models/${this.model}`,
@@ -159,11 +176,11 @@ export class SenseiLiveSession {
         ws.send(JSON.stringify(setup));
       };
       ws.onerror = () => {
-        window.clearTimeout(timer);
+        this.clearSetupTimer();
         reject(new Error("Tidak bisa terhubung ke Gemini Live. Periksa koneksi internetmu."));
       };
       ws.onclose = (e) => {
-        window.clearTimeout(timer);
+        this.clearSetupTimer();
         if (this.closed) return;
         this.closed = true;
         const reason =
@@ -178,12 +195,18 @@ export class SenseiLiveSession {
       };
     });
 
-    ws.onmessage = (e) => this.handleEvent(e.data as string);
+    // Handshake selesai — ganti handler transient dengan handler sesi penuh.
     ws.onclose = (e) => {
       if (this.closed) return;
       this.closed = true;
       this.setStatus("closed");
       this.events.onClosed?.(e.reason || "Sesi berakhir.");
+    };
+    ws.onerror = () => {
+      if (!this.closed) {
+        this.setStatus("error");
+        this.events.onError?.("Koneksi ke Gemini Live terputus.");
+      }
     };
 
     // 4) Mulai tangkap mic (AudioContext 16 kHz, ini memicu resume gesture-safely).
@@ -209,8 +232,12 @@ export class SenseiLiveSession {
     }
 
     if (ev.setupComplete) {
+      this.clearSetupTimer();
       this.setStatus("listening");
       this.events.onReady?.({ voice: this.voice, model: this.model });
+      // Lepaskan open() dari penggantungan handshake.
+      this.setupResolve?.();
+      this.setupResolve = null;
       return;
     }
 
@@ -286,8 +313,18 @@ export class SenseiLiveSession {
     );
   }
 
+  /** Bersihkan timer handshake (dipanggil saat selesai/gagal/dibatalkan). */
+  private clearSetupTimer() {
+    if (this.setupTimer !== null) {
+      window.clearTimeout(this.setupTimer);
+      this.setupTimer = null;
+    }
+    this.setupResolve = null;
+  }
+
   /** Tutup sesi & bersihkan audio. */
   close() {
+    this.clearSetupTimer();
     if (this.closed) {
       this.cleanup();
       return;
