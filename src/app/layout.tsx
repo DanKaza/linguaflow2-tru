@@ -24,9 +24,41 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "LinguaFlow - Belajar Bahasa Jepang",
+  metadataBase: new URL("https://linguaflowdemo.vercel.app"),
+  title: {
+    default: "LinguaFlow — Belajar Bahasa Jepang",
+    template: "%s · LinguaFlow",
+  },
   description:
-    "Platform belajar Bahasa Jepang interaktif untuk murid Indonesia.",
+    "Platform belajar Bahasa Jepang interaktif untuk murid Indonesia — flashcard kosakata JLPT, kuis harian, latihan pelafalan, dan AI Sensei.",
+  applicationName: "LinguaFlow",
+  keywords: [
+    "belajar bahasa Jepang",
+    "JLPT",
+    "N5",
+    "N4",
+    "N3",
+    "flashcard kosakata",
+    "AI Sensei",
+    "SMK",
+  ],
+  openGraph: {
+    type: "website",
+    url: "https://linguaflowdemo.vercel.app",
+    siteName: "LinguaFlow",
+    title: "LinguaFlow — Belajar Bahasa Jepang",
+    description:
+      "Platform belajar Bahasa Jepang interaktif untuk murid Indonesia — flashcard kosakata JLPT, kuis harian, latihan pelafalan, dan AI Sensei.",
+    locale: "id_ID",
+    // Gambar disediakan otomatis oleh src/app/opengraph-image.tsx.
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LinguaFlow — Belajar Bahasa Jepang",
+    description:
+      "Platform belajar Bahasa Jepang interaktif untuk murid Indonesia — flashcard kosakata JLPT, kuis harian, latihan pelafalan, dan AI Sensei.",
+    // Gambar disediakan otomatis oleh src/app/opengraph-image.tsx.
+  },
 };
 
 /** Inline script to set dark class before hydration — prevents flash */
