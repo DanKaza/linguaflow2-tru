@@ -1,18 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { Search, ChevronRight, Plus, Loader2 } from "lucide-react";
+import { Search, ChevronRight, Plus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
-import { Badge } from "@/components/ui/Badge";
-import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
+import { DEMO_CLASSES, getDemoStudentsByClass } from "@/lib/demo-data";
 
 /* ───────── Types ───────── */
 interface ClassInfo {
@@ -30,54 +27,25 @@ interface Student {
 
 export default function ClassDetail() {
   const router = useRouter();
-  const supabase = createClient();
-  const { profile: teacherProfile } = useAuth();
   // Pakai useParams() — lebih reliable daripada props params di Next.js 16
   const params = useParams();
   const classId = params?.id as string | undefined;
 
-  const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
-  const [students, setStudents] = useState<Student[]>([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("nama");
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const teacherId = teacherProfile?.id;
-    if (!teacherId || !classId) return;
+  // Data demo — cari kelas dari DEMO_CLASSES berdasarkan id.
+  const classInfo: ClassInfo | null =
+    DEMO_CLASSES.find((c) => c.id === classId) ?? null;
 
-    async function load() {
-      setLoading(true);
-
-      // 1) Ambil info kelas
-      const { data: cls } = await supabase
-        .from("classes")
-        .select("id, name, code")
-        .eq("id", classId)
-        .eq("teacher_id", teacherId)
-        .maybeSingle();
-
-      if (!cls) {
-        setLoading(false);
-        return;
-      }
-
-      setClassInfo(cls);
-
-      // 2) Ambil murid di kelas ini
-      const { data: muridRaw } = await supabase
-        .from("profiles")
-        .select("id, full_name, nis, created_at")
-        .eq("role", "murid")
-        .eq("class_code", cls.code)
-        .order("full_name");
-
-      setStudents(muridRaw || []);
-      setLoading(false);
-    }
-
-    load();
-  }, [teacherProfile?.id, classId, supabase]);
+  const students: Student[] = classInfo
+    ? getDemoStudentsByClass(classInfo.code).map((s) => ({
+        id: s.id,
+        full_name: s.full_name,
+        nis: s.nis,
+        created_at: s.joinedAt,
+      }))
+    : [];
 
   const q = search.toLowerCase();
   let filtered = students.filter(
@@ -95,7 +63,7 @@ export default function ClassDetail() {
     );
   }
 
-  if (!loading && !classInfo) {
+  if (!classInfo) {
     return (
       <div className="mt-8 text-center text-sm text-ink-soft">
         Kelas tidak ditemukan atau bukan kelas Anda.
@@ -151,11 +119,7 @@ export default function ClassDetail() {
         </Select>
       </div>
 
-      {loading ? (
-        <div className="mt-8 flex items-center justify-center gap-2 text-sm text-ink-soft">
-          <Loader2 size={18} className="animate-spin" /> Memuat murid&hellip;
-        </div>
-      ) : filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="mt-8 text-center text-sm text-ink-soft">
           {students.length === 0
             ? "Belum ada murid di kelas ini."

@@ -19,7 +19,7 @@ import { AnimatedPage } from "@/components/ui/AnimatedPage";
 import { useJapaneseSpeech } from "@/lib/speech";
 import { useMediaRecorder } from "@/lib/use-media-recorder";
 import { useSpeechRateLimit, FAIL_COOLDOWN_SECONDS } from "@/lib/use-speech-rate-limit";
-import { transcribeAudio } from "@/lib/speech-api";
+import { transcribeStt } from "@/lib/linguaflow-api";
 import { scorePronunciation } from "@/lib/scoring";
 
 interface PracticeSentence {
@@ -90,9 +90,8 @@ export default function SpeechPractice() {
           );
         }
         sentRequest = true;
-        const result = await transcribeAudio(blob, {
+        const result = await transcribeStt(blob, {
           language: "ja",
-          quality: "fast",
           timeoutMs: 45_000,
         });
         const score = scorePronunciation(result.text, sentence.furigana);

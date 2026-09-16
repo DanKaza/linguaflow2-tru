@@ -33,6 +33,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # word bank build artifacts (raw downloaded datasets ~57MB)
 /scripts/build-vocab/tmp/
@@ -43,5 +44,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-next.config.ts
 

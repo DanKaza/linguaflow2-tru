@@ -247,7 +247,7 @@ export function Hero() {
           transition={{ duration: 0.8, ease: easeOut, delay: 0.7 }}
         >
           <Link
-            href="/login"
+            href="/masuk"
             className="group relative px-10 py-4 bg-jp-red text-white rounded-full font-bold text-sm flex items-center gap-2 transition-all hover:scale-[1.03] hover:shadow-xl hover:shadow-jp-red/20 active:brightness-[0.92] overflow-hidden"
           >
             {/* Animated shimmer overlay */}

@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, ChevronRight, Plus, Users, Loader2 } from "lucide-react";
+import { Search, ChevronRight, Plus, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
+import { useDemoSession } from "@/lib/demo-session";
+import { DEMO_STUDENTS, getDemoClassesByTeacher } from "@/lib/demo-data";
+import { useMemo, useState } from "react";
 
 /* ───────── Types ───────── */
 interface TeacherClass {
@@ -21,57 +21,21 @@ interface TeacherClass {
 
 export default function ClassList() {
   const router = useRouter();
-  const supabase = createClient();
-  const { profile: teacherProfile } = useAuth();
-
-  const [classes, setClasses] = useState<TeacherClass[]>([]);
+  const { profile } = useDemoSession();
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!teacherProfile?.id) return;
+  const teacherId = profile?.id ?? "demo-guru-001";
 
-    async function load() {
-      if (!teacherProfile?.id) return;
-      setLoading(true);
-
-      // 1) Ambil kelas yang diajar
-      const { data: kelasRaw } = await supabase
-        .from("classes")
-        .select("id, name, code")
-        .eq("teacher_id", teacherProfile.id)
-        .order("name");
-
-      // 2) Hitung murid per kelas
-      const codes = (kelasRaw || []).map((k: any) => k.code).filter(Boolean);
-      let studentCounts = new Map<string, number>();
-
-      if (codes.length > 0) {
-        const { data: muridRaw } = await supabase
-          .from("profiles")
-          .select("class_code")
-          .eq("role", "murid")
-          .in("class_code", codes);
-
-        muridRaw?.forEach((m: any) => {
-          if (m.class_code)
-            studentCounts.set(m.class_code, (studentCounts.get(m.class_code) || 0) + 1);
-        });
-      }
-
-      const mapped: TeacherClass[] = (kelasRaw || []).map((k: any) => ({
-        id: k.id,
-        name: k.name,
-        code: k.code,
-        student_count: studentCounts.get(k.code) || 0,
-      }));
-
-      setClasses(mapped);
-      setLoading(false);
-    }
-
-    load();
-  }, [teacherProfile?.id, supabase]);
+  const classes: TeacherClass[] = useMemo(
+    () =>
+      getDemoClassesByTeacher(teacherId).map((c) => ({
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        student_count: DEMO_STUDENTS.filter((s) => s.class_code === c.code).length,
+      })),
+    [teacherId],
+  );
 
   const totalStudents = classes.reduce((a, b) => a + b.student_count, 0);
 
@@ -102,11 +66,7 @@ export default function ClassList() {
         />
       </div>
 
-      {loading ? (
-        <div className="mt-8 flex items-center justify-center gap-2 text-sm text-ink-soft">
-          <Loader2 size={18} className="animate-spin" /> Memuat kelas&hellip;
-        </div>
-      ) : filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="mt-8 text-center text-sm text-ink-soft">
           {classes.length === 0
             ? "Belum ada kelas yang diajar."

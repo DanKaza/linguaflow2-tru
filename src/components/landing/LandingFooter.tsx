@@ -15,7 +15,7 @@ export function LandingFooter() {
           <span className="italic">designed with care, built for community.</span>
         </p>
         <div className="flex gap-5 text-sm font-semibold text-ink-soft">
-          <Link href="/login" className="hover:text-navy transition-colors">Masuk</Link>
+          <Link href="/masuk" className="hover:text-navy transition-colors">Masuk</Link>
           <Link href="/kontak" className="hover:text-navy transition-colors">Kontak</Link>
         </div>
       </div>

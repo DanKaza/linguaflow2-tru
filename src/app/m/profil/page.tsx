@@ -18,7 +18,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
-import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -27,8 +26,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Input } from "@/components/ui/Input";
 import { useTheme } from "@/lib/theme";
 import { useProgress } from "@/lib/progress";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
+import { useDemoSession } from "@/lib/demo-session";
 
 const languages = ["Indonesia", "English", "日本語"] as const;
 
@@ -37,7 +35,7 @@ type SheetKind = "profile" | "password" | "notif" | "language" | "logout" | null
 export default function Profil() {
   const { theme, toggle: toggleTheme } = useTheme();
   const dark = theme === "dark";
-  const { profile, signOut, refreshProfile } = useAuth();
+  const { profile, signOut } = useDemoSession();
   const [progress] = useProgress();
 
   const [sheet, setSheet] = useState<SheetKind>(null);
@@ -52,7 +50,7 @@ export default function Profil() {
   const classInfo = profile?.class_code || (profile?.role === "murid" ? "Murid" : "");
 
   async function saveProfile() {
-    if (!profile) return;
+    // Mode prototipe: nama hanya tersimpan di state lokal (tidak ke DB).
     const name = draftName.trim();
     if (!name) {
       setError("Nama tidak boleh kosong.");
@@ -60,22 +58,11 @@ export default function Profil() {
     }
     setSaving(true);
     setError(null);
-    try {
-      const supabase = createClient();
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ full_name: name })
-        .eq("id", profile.id);
-      if (updateError) throw new Error(updateError.message);
-      await refreshProfile();
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
-      setSheet(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan profil.");
-    } finally {
-      setSaving(false);
-    }
+    await new Promise((r) => setTimeout(r, 400));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+    setSheet(null);
+    setSaving(false);
   }
 
   return (
@@ -303,15 +290,14 @@ export default function Profil() {
         <div className="space-y-3 pb-2">
           <p className="text-center text-sm text-ink-soft">
             Kamu akan keluar dari akun ini di perangkat ini.
-          </p>
-          <Button
+          </p>            <Button
             fullWidth
             size="lg"
             variant="primary"
             onClick={() => signOut()}
             className="bg-vermillion"
           >
-            <LogOut size={18} /> Ya, Keluar
+            <LogOut size={18} /> Keluar ke Pilih Akun
           </Button>
           <Button fullWidth variant="outline" onClick={() => setSheet(null)}>
             Batal

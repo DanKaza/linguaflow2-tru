@@ -1,4 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
+// Laporan sekolah — MODE PROTOTIPE.
+// Dulu: agregasi dari Supabase (profiles/classes/quiz_attempts).
+// Sekarang: agregasi dari data demo (src/lib/demo-data.ts) supaya
+// bentuk interface SchoolReport tetap sama dan halaman tidak berubah.
+
+import {
+  DEMO_ATTEMPTS,
+  DEMO_CLASSES,
+  DEMO_STUDENTS,
+} from "@/lib/demo-data";
 
 export interface ClassReport {
   name: string;
@@ -23,81 +32,24 @@ export interface SchoolReport {
   avgScore: number | null;
   activeStudents: number;
   completionPct: number;
-  /** false = tabel quiz_attempts belum dibuat (migrasi 001 belum dijalankan). */
+  /** Selalu true di mode demo — konsep "tabel belum dibuat" tidak berlaku lagi. */
   attemptsTableReady: boolean;
   classes: ClassReport[];
   students: StudentReport[];
 }
 
-/**
- * Ambil laporan sekolah untuk admin: statistik pengerjaan kuis murid
- * yang nyata dari tabel `quiz_attempts`, diagregasi per murid & per kelas.
- *
- * Semua agregasi dihitung di sini (bukan group-by SQL) supaya tahan
- * terhadap struktur tabel yang berubah & mudah dibaca.
- */
 export async function getSchoolReport(
-  schoolId: string,
+  _schoolId: string,
 ): Promise<SchoolReport> {
-  const supabase = await createClient();
+  const classMap = new Map(DEMO_CLASSES.map((c) => [c.code, c.name]));
 
-  /* ── Murid & kelas (sumber: tabel yang sudah ada) ── */
-  const [{ data: students }, { data: classes }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, class_code")
-      .eq("role", "murid")
-      .eq("school_id", schoolId)
-      .order("full_name"),
-    supabase
-      .from("classes")
-      .select("name, code")
-      .eq("school_id", schoolId)
-      .order("name"),
-  ]);
-
-  /* ── Attempts (tabel baru — mungkin belum dibuat) ── */
-  let attempts: {
-    student_id: string;
-    score: number;
-    total_questions: number;
-    submitted_at: string;
-  }[] = [];
-  let attemptsTableReady = true;
-  try {
-    const { data, error } = await supabase
-      .from("quiz_attempts")
-      .select("student_id, score, total_questions, submitted_at")
-      .eq("school_id", schoolId);
-    if (error) {
-      if (/does not exist|could not find.*table/i.test(error.message)) {
-        attemptsTableReady = false;
-      } else {
-        console.error("Gagal ambil attempt kuis:", error.message);
-      }
-    } else {
-      attempts = (data ?? []) as typeof attempts;
-    }
-  } catch (err) {
-    attemptsTableReady = false;
-    console.error("Gagal ambil attempt kuis:", err);
-  }
-
-  /* ── Agregasi per murid ──
-   * Rata-rata ditimbang jumlah soal (weighted), karena attempt bisa berupa
-   * kuis 10 soal (0–100) atau latihan kalimat 1 soal (0/100) — rata-rata
-   * biasa akan membuat 1 kalimat salah setara dengan gagal 1 kuis penuh. */
-  const classMap = new Map((classes ?? []).map((c) => [c.code, c.name]));
+  /* ── Agregasi attempt per murid ──
+   * Rata-rata ditimbang jumlah soal, sama seperti implementasi lama. */
   const aggByStudent = new Map<
     string,
-    {
-      attempts: number;
-      weightedSum: number;
-      totalQuestions: number;
-      last: string | null;
-    }
+    { attempts: number; weightedSum: number; totalQuestions: number; last: string | null }
   >();
-  for (const a of attempts) {
+  for (const a of DEMO_ATTEMPTS) {
     const cur = aggByStudent.get(a.student_id) ?? {
       attempts: 0,
       weightedSum: 0,
@@ -112,12 +64,12 @@ export async function getSchoolReport(
     aggByStudent.set(a.student_id, cur);
   }
 
-  const studentRows: StudentReport[] = (students ?? []).map((s) => {
+  const studentRows: StudentReport[] = DEMO_STUDENTS.map((s) => {
     const agg = aggByStudent.get(s.id);
     return {
       id: s.id,
       full_name: s.full_name,
-      class_name: classMap.get(s.class_code ?? "") ?? null,
+      class_name: classMap.get(s.class_code) ?? null,
       attempts: agg?.attempts ?? 0,
       avgScore:
         agg && agg.totalQuestions > 0
@@ -127,16 +79,15 @@ export async function getSchoolReport(
     };
   });
 
-  /* ── Agregasi per kelas (tetap berbobot soal) ── */
-  const classRows: ClassReport[] = (classes ?? []).map((c) => {
+  /* ── Agregasi per kelas ── */
+  const classRows: ClassReport[] = DEMO_CLASSES.map((c) => {
     const members = studentRows.filter((s) => s.class_name === c.name);
     const attemptsCount = members.reduce((sum, m) => sum + m.attempts, 0);
     const active = members.filter((m) => m.attempts > 0).length;
-    // Hitung ulang bobot dari attempt mentah untuk akurasi per kelas.
     const memberIds = new Set(members.map((m) => m.id));
     let weightedSum = 0;
     let totalQuestions = 0;
-    for (const a of attempts) {
+    for (const a of DEMO_ATTEMPTS) {
       if (!memberIds.has(a.student_id)) continue;
       const questions = Math.max(1, a.total_questions);
       weightedSum += a.score * questions;
@@ -153,13 +104,13 @@ export async function getSchoolReport(
   });
   classRows.sort((a, b) => b.attempts - a.attempts);
 
-  /* ── Angka ringkasan sekolah (berbobot soal) ── */
+  /* ── Ringkasan sekolah ── */
   const totalStudents = studentRows.length;
-  const totalAttempts = attempts.length;
+  const totalAttempts = DEMO_ATTEMPTS.length;
   const activeStudents = studentRows.filter((s) => s.attempts > 0).length;
   let schoolWeightedSum = 0;
   let schoolTotalQuestions = 0;
-  for (const a of attempts) {
+  for (const a of DEMO_ATTEMPTS) {
     const questions = Math.max(1, a.total_questions);
     schoolWeightedSum += a.score * questions;
     schoolTotalQuestions += questions;
@@ -168,8 +119,6 @@ export async function getSchoolReport(
     schoolTotalQuestions > 0
       ? Math.round(schoolWeightedSum / schoolTotalQuestions)
       : null;
-  const completionPct =
-    totalStudents > 0 ? Math.round((activeStudents / totalStudents) * 100) : 0;
 
   /* Paling aktif & berprestasi di atas. */
   studentRows.sort(
@@ -182,8 +131,9 @@ export async function getSchoolReport(
     totalAttempts,
     avgScore,
     activeStudents,
-    completionPct,
-    attemptsTableReady,
+    completionPct:
+      totalStudents > 0 ? Math.round((activeStudents / totalStudents) * 100) : 0,
+    attemptsTableReady: true,
     classes: classRows,
     students: studentRows,
   };

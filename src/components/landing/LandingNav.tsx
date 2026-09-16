@@ -83,7 +83,7 @@ export function LandingNav() {
         {/* Desktop auth */}
         <div className="hidden shrink-0 items-center gap-2 md:flex">
           <Link
-            href="/login"
+            href="/masuk"
             className="rounded-full px-4 py-1.5 text-sm font-semibold text-navy transition-colors hover:bg-navy/5"
           >
             Masuk
@@ -123,7 +123,7 @@ export function LandingNav() {
             ))}
             <div className="my-1 h-px bg-line/60" />
             <Link
-              href="/login"
+              href="/masuk"
               onClick={() => setOpen(false)}
               className="rounded-xl px-4 py-3 text-left text-sm font-semibold text-navy transition-colors hover:bg-navy/5"
             >

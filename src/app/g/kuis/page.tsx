@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Search,
   Plus,
   GripVertical,
   Trash2,
   Download,
-  Loader2,
 } from "lucide-react";
 import {
   DndContext,
@@ -30,9 +29,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
-import { publishQuiz } from "./actions";
+import { useDemoSession } from "@/lib/demo-session";
+import { getDemoClassesByTeacher } from "@/lib/demo-data";
+import { useSchool } from "@/lib/school";
 
 interface Word {
   id: number;
@@ -99,11 +98,16 @@ function SortableWord({ w, index, onRemove }: { w: Word; index: number; onRemove
 
 export default function QuizCreator() {
   const router = useRouter();
-  const supabase = createClient();
-  const { profile: teacherProfile } = useAuth();
+  const { profile } = useDemoSession();
+  const [, setSchool] = useSchool();
 
-  const [classes, setClasses] = useState<{ code: string; name: string }[]>([]);
-  const [selectedClassCode, setSelectedClassCode] = useState<string>("");
+  const teacherId = profile?.id ?? "demo-guru-001";
+  const classes = getDemoClassesByTeacher(teacherId).map((c) => ({
+    code: c.code,
+    name: c.name,
+  }));
+
+  const [selectedClassCode, setSelectedClassCode] = useState<string>(classes[0]?.code ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [fError, setFError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Word[]>([bank[0], bank[1], bank[2]]);
@@ -115,28 +119,6 @@ export default function QuizCreator() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
-
-  useEffect(() => {
-    const teacherId = teacherProfile?.id;
-    if (!teacherId) return;
-
-    async function load() {
-      const { data: kelasRaw } = await supabase
-        .from("classes")
-        .select("code, name")
-        .eq("teacher_id", teacherId)
-        .order("name");
-
-      const clsList = (kelasRaw || []).map((k: any) => ({
-        code: k.code,
-        name: k.name,
-      }));
-      setClasses(clsList);
-      if (clsList.length > 0) setSelectedClassCode(clsList[0].code);
-    }
-
-    load();
-  }, [teacherProfile?.id, supabase]);
 
   const filtered = bank.filter(
     (w) =>
@@ -172,30 +154,36 @@ export default function QuizCreator() {
     setSubmitting(true);
     setFError(null);
 
-    const fd = new FormData();
-    fd.set("title", title || "Kuis Tanpa Judul");
-    fd.set("level", level);
-    fd.set("passing_grade", passing);
-    fd.set("class_code", selectedClassCode);
-    fd.set(
-      "words",
-      JSON.stringify(
-        selected.map((w) => ({
-          kanji: w.kanji,
-          furigana: w.furigana,
-          arti: w.arti,
-          level: w.level,
-        })),
-      ),
-    );
+    const cls = classes.find((c) => c.code === selectedClassCode);
 
-    const r = await publishQuiz(fd);
-    if (r?.error) {
-      setFError(r.error);
-      setSubmitting(false);
-    } else {
-      router.push("/g/dashboard");
-    }
+    // Mode prototipe: kuis disimpan ke store lokal (localStorage)
+    // supaya bisa dilihat di sesi ini, tanpa backend.
+    setSchool((prev) => ({
+      ...prev,
+      quizzes: [
+        ...prev.quizzes,
+        {
+          id: `quiz-${Date.now()}`,
+          title: title || "Kuis Tanpa Judul",
+          level,
+          passingGrade: Number(passing) || 75,
+          words: selected.map((w) => ({
+            kanji: w.kanji,
+            furigana: w.furigana,
+            arti: w.arti,
+            level: w.level,
+          })),
+          classId: selectedClassCode,
+          className: cls?.name ?? selectedClassCode,
+          teacher: profile?.full_name ?? "Guru",
+          publishedAt: new Date().toISOString().slice(0, 10),
+        },
+      ],
+    }));
+
+    await new Promise((r) => setTimeout(r, 300));
+    setSubmitting(false);
+    router.push("/g/dashboard");
   }
 
   return (
@@ -217,7 +205,7 @@ export default function QuizCreator() {
           </Select>
           <Button size="sm" onClick={handlePublish} disabled={submitting}>
             {submitting ? (
-              <><Loader2 size={15} className="animate-spin" /> Publis&hellip;</>
+              "Publishing…"
             ) : (
               <><Download size={15} /> Publish</>
             )}

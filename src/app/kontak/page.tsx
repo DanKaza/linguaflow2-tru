@@ -165,7 +165,7 @@ export default function KontakPage() {
         {/* ── CTA bawah ── */}
         <div className="mt-16 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <Link
-            href="/login"
+            href="/masuk"
             className="inline-flex items-center gap-2 rounded-full bg-navy px-8 py-3.5 text-sm font-bold text-cream shadow-lg shadow-navy/20 transition-all duration-300 hover:bg-navy-soft hover:scale-[1.02] active:scale-[0.98]"
           >
             Masuk ke kelas

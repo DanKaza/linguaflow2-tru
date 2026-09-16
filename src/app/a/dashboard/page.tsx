@@ -2,67 +2,16 @@ import { TrendingUp, Users, UserCircle, ClipboardList, Activity } from "lucide-r
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Avatar } from "@/components/ui/Avatar";
-import { createClient } from "@/lib/supabase/server";
-import { getDashboardStats } from "@/lib/queries/dashboard";
-import { getActivityData } from "./actions";
+import { DEMO_SCHOOL } from "@/lib/demo-data";
+import { getDashboardStats, getActivityData } from "@/lib/queries/dashboard";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return <p className="text-sm text-ink-soft">Silakan login terlebih dahulu.</p>;
-  }
-
-  const { data: adminProfile } = await supabase
-    .from("profiles")
-    .select("school_id, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!adminProfile?.school_id) {
-    return (
-      <div className="mt-12 text-center">
-        <p className="text-lg font-bold text-ink">Selamat datang di LinguaFlow! 👋</p>
-        <p className="mt-2 text-sm text-ink-soft">
-          Sepertinya sekolah belum dikonfigurasi.{' '}
-          <a
-            href="/a/pengaturan"
-            className="font-semibold text-indigo underline-offset-2 hover:underline"
-          >
-            Buka Pengaturan Sekolah
-          </a>{' '}
-          untuk memulai.
-        </p>
-      </div>
-    );
-  }
-
-  const schoolId = adminProfile.school_id;
-
-  // Query nama sekolah + data dashboard paralel
-  const schoolNamePromise = supabase
-    .from("schools")
-    .select("name")
-    .eq("id", schoolId)
-    .maybeSingle();
-
-  let stats, activity, schoolName;
-  try {
-    const results = await Promise.all([
-      getDashboardStats(schoolId),
-      getActivityData(schoolId),
-      schoolNamePromise,
-    ]);
-    stats = results[0];
-    activity = results[1];
-    schoolName = results[2]?.data?.name ?? "Sekolah";
-  } catch (err) {
-    console.error("Dashboard gagal memuat:", err);
-    return <p className="text-sm text-ink-soft">Gagal memuat data dashboard.</p>;
-  }
+  const [stats, activity] = await Promise.all([
+    getDashboardStats(DEMO_SCHOOL.id),
+    getActivityData(DEMO_SCHOOL.id),
+  ]);
 
   const today = new Date().toLocaleDateString("id-ID", {
     weekday: "long",
@@ -77,7 +26,7 @@ export default async function AdminDashboard() {
   return (
     <>
       <h1 className="text-2xl font-bold text-ink jp-rule">
-        Dashboard — {schoolName}
+        Dashboard — {DEMO_SCHOOL.name}
       </h1>
       <p className="text-sm text-ink-soft">{today}</p>
 

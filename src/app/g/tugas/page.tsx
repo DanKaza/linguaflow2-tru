@@ -2,25 +2,29 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Layers, FileCheck, Users, Loader2 } from "lucide-react";
+import { Check, Layers, FileCheck, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
-import { createTask } from "./actions";
+import { useDemoSession } from "@/lib/demo-session";
+import { getDemoClassesByTeacher } from "@/lib/demo-data";
+import { useSchool } from "@/lib/school";
 
 const steps = ["Jenis", "Materi", "Target", "Deadline", "Preview"];
 
 export default function AssignTaskWizard() {
   const router = useRouter();
-  const supabase = createClient();
-  const { profile: teacherProfile } = useAuth();
+  const { profile } = useDemoSession();
+  const [, setSchool] = useSchool();
 
-  const [classes, setClasses] = useState<{ code: string; name: string }[]>([]);
+  const teacherId = profile?.id ?? "demo-guru-001";
+  const classes = getDemoClassesByTeacher(teacherId).map((c) => ({
+    code: c.code,
+    name: c.name,
+  }));
+
   const [submitting, setSubmitting] = useState(false);
   const [fError, setFError] = useState<string | null>(null);
-  const [loadingClasses, setLoadingClasses] = useState(true);
 
   const [step, setStep] = useState(1);
   const [type, setType] = useState<"flashcard" | "kuis" | null>(null);
@@ -28,34 +32,15 @@ export default function AssignTaskWizard() {
   const [category, setCategory] = useState("Kata Kerja");
   const [target, setTarget] = useState("20");
   const [duration, setDuration] = useState("15");
-  const [deadline, setDeadline] = useState(
-    new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-  );
-  const [selectedClass, setSelectedClass] = useState<string | null>(null);
-
+  // Default deadline dihitung setelah mount (menghindari Date.now() saat render).
+  const [deadline, setDeadline] = useState("");
   useEffect(() => {
-    const teacherId = teacherProfile?.id;
-    if (!teacherId) return;
-
-    async function load() {
-      setLoadingClasses(true);
-      const { data: kelasRaw } = await supabase
-        .from("classes")
-        .select("code, name")
-        .eq("teacher_id", teacherId)
-        .order("name");
-
-      const clsList = (kelasRaw || []).map((k: any) => ({
-        code: k.code,
-        name: k.name,
-      }));
-      setClasses(clsList);
-      if (clsList.length > 0) setSelectedClass(clsList[0].name);
-      setLoadingClasses(false);
-    }
-
-    load();
-  }, [teacherProfile?.id, supabase]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Pola hydration-safe: default dihitung setelah mount (lihat m/kuis/soal).
+    setDeadline(new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+  }, []);
+  const [selectedClass, setSelectedClass] = useState<string | null>(
+    classes.length > 0 ? classes[0].name : null,
+  );
 
   async function handleSubmit() {
     if (!type || !selectedClass) return;
@@ -66,25 +51,39 @@ export default function AssignTaskWizard() {
     setSubmitting(true);
     setFError(null);
 
-    const fd = new FormData();
-    fd.set("class_code", cls.code);
-    fd.set("title", type === "kuis" ? `Kuis ${category} ${level}` : `Hafalan ${target} Kata ${level}`);
-    fd.set("type", type);
-    fd.set("level", level);
-    fd.set("category", category);
-    fd.set("target", target);
-    fd.set("duration", duration);
-    fd.set("deadline", deadline);
+    const title =
+      type === "kuis"
+        ? `Kuis ${category} ${level}`
+        : `Hafalan ${target} Kata ${level}`;
 
-    const r = await createTask(fd);
-    if (r?.error) {
-      setFError(r.error);
-      setSubmitting(false);
-    } else {
-      router.push("/g/dashboard");
-    }
+    // Mode prototipe: tugas disimpan ke store lokal (localStorage)
+    // supaya bisa dilihat di sesi ini, tanpa backend.
+    setSchool((prev) => ({
+      ...prev,
+      tasks: [
+        ...prev.tasks,
+        {
+          id: `task-${Date.now()}`,
+          title,
+          type,
+          classId: cls.code,
+          className: cls.name,
+          level,
+          category,
+          target: Number(target) || 10,
+          duration: Number(duration) || 15,
+          deadline,
+          createdAt: new Date().toISOString().slice(0, 10),
+          teacher: profile?.full_name ?? "Guru",
+        },
+      ],
+    }));
+
+    // Simulasi delay singkat supaya UX konsisten.
+    await new Promise((r) => setTimeout(r, 300));
+    setSubmitting(false);
+    router.push("/g/dashboard");
   }
-
 
   return (
     <>
@@ -158,9 +157,7 @@ export default function AssignTaskWizard() {
 
             <div className="mt-4">
               <label className="mb-1 block text-sm font-semibold text-ink">Kelas Tujuan</label>
-              {loadingClasses ? (
-                <p className="text-sm text-ink-soft">Memuat kelas...</p>
-              ) : classes.length === 0 ? (
+              {classes.length === 0 ? (
                 <p className="text-sm text-ink-soft">Belum ada kelas yang diajar.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -294,11 +291,7 @@ export default function AssignTaskWizard() {
           </Button>
         ) : (
           <Button className="flex-1" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? (
-              <><Loader2 size={16} className="animate-spin" /> Mengirim&hellip;</>
-            ) : (
-              "Kirim Tugas"
-            )}
+            {submitting ? "Mengirim…" : "Kirim Tugas"}
           </Button>
         )}
       </div>

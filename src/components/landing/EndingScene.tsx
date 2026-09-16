@@ -44,7 +44,7 @@ export function EndingScene() {
           Gratis untuk murid SMK Texar.
         </p>
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link href="/login"
+          <Link href="/masuk"
             className="group relative w-full sm:w-auto rounded-full bg-navy px-10 py-3.5 text-sm font-bold text-cream shadow-xl transition-all hover:bg-navy-soft hover:scale-[1.02] active:brightness-[0.92] overflow-hidden">
             <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             <span className="relative z-10">Masuk ke Kelas</span>

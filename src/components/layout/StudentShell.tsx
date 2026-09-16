@@ -5,7 +5,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { StudentBottomNav } from "@/components/layout/StudentBottomNav";
 import { StudentSidebar } from "@/components/layout/StudentSidebar";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { useAuth } from "@/lib/auth-context";
+import { useDemoSession } from "@/lib/demo-session";
 import { useLocalStorage } from "@/lib/use-local-storage";
 
 /** Default greeting header — only used on dashboard */
@@ -47,7 +47,7 @@ export function StudentShell({
   title?: string;
   noHeader?: boolean;
 }) {
-  const { profile } = useAuth();
+  const { profile } = useDemoSession();
   const displayName = propName || profile?.full_name || "Murid";
 
   // Sidebar desktop bisa diciutkan menjadi rel ikon (tersimpan lintas halaman).

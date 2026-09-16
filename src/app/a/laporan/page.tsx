@@ -1,10 +1,10 @@
-import { TrendingUp, ClipboardList, Users, UserX, AlertTriangle } from "lucide-react";
+import { TrendingUp, ClipboardList, Users, UserX } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
-import { createClient } from "@/lib/supabase/server";
+import { DEMO_SCHOOL } from "@/lib/demo-data";
 import { getSchoolReport } from "@/lib/queries/laporan";
 
 export const dynamic = "force-dynamic";
@@ -51,44 +51,9 @@ function fmtDate(iso: string | null): string {
 }
 
 export default async function LaporanSekolah() {
-  const supabase = await createClient();
+  const report = await getSchoolReport(DEMO_SCHOOL.id);
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return <p className="text-sm text-ink-soft">Silakan login terlebih dahulu.</p>;
-  }
-
-  const { data: adminProfile } = await supabase
-    .from("profiles")
-    .select("school_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!adminProfile?.school_id) {
-    return (
-      <div className="mt-12 text-center">
-        <p className="text-lg font-bold text-ink">Laporan belum tersedia</p>
-        <p className="mt-2 text-sm text-ink-soft">
-          Sekolah belum dikonfigurasi.{' '}
-          <a href="/a/pengaturan" className="font-semibold text-indigo underline-offset-2 hover:underline">
-            Buka Pengaturan Sekolah
-          </a>{' '}
-          untuk memulai.
-        </p>
-      </div>
-    );
-  }
-
-  const schoolId = adminProfile.school_id;
-
-  const [{ data: school }, report] = await Promise.all([
-    supabase.from("schools").select("name").eq("id", schoolId).maybeSingle(),
-    getSchoolReport(schoolId),
-  ]);
-
-  const schoolName = school?.name ?? "Sekolah";
+  const schoolName = DEMO_SCHOOL.name;
   const today = new Date().toLocaleDateString("id-ID", {
     weekday: "long",
     day: "numeric",
@@ -124,20 +89,6 @@ export default async function LaporanSekolah() {
           />
         )}
       </div>
-
-      {/* ⚠️ Migrasi tabel belum dijalankan */}
-      {!report.attemptsTableReady && (
-        <Card padded className="mt-5 border-gold/40 bg-gold/[0.04]">
-          <p className="flex items-center gap-2 text-sm font-bold text-gold">
-            <AlertTriangle size={16} /> Data pengerjaan belum tersedia
-          </p>
-          <p className="mt-1.5 text-sm text-ink-soft">
-            Tabel <code className="rounded bg-indigo-tint-soft px-1 font-mono text-xs">quiz_attempts</code> belum dibuat.
-            Jalankan migrasi <code className="rounded bg-indigo-tint-soft px-1 font-mono text-xs">supabase/migrations/001_quiz_attempts.sql</code>{' '}
-            di Supabase → SQL Editor agar hasil kuis murid mulai tercatat.
-          </p>
-        </Card>
-      )}
 
       {/* ── 4 KARTU STATS ── */}
       <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -199,7 +150,7 @@ export default async function LaporanSekolah() {
         </Card>
       ) : (
         <>
-          {report.totalAttempts === 0 && report.attemptsTableReady && (
+          {report.totalAttempts === 0 && (
             <p className="mt-4 rounded-btn bg-indigo-tint-soft/50 px-4 py-3 text-center text-xs text-ink-soft">
               Data pengerjaan akan muncul di sini setelah murid menyelesaikan kuis
               (Kuis Harian atau Tugas Guru).

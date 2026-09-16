@@ -7,7 +7,7 @@ import { StudentShell } from "@/components/layout/StudentShell";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
-import { useAuth } from "@/lib/auth-context";
+import { useDemoSession } from "@/lib/demo-session";
 import { useProgress } from "@/lib/progress";
 import { useState } from "react";
 
@@ -15,7 +15,7 @@ type Filter = "kelas" | "sekolah" | "mingguan";
 
 export default function Leaderboard() {
   const [filter, setFilter] = useState<Filter>("kelas");
-  const { profile } = useAuth();
+  const { profile } = useDemoSession();
   const [progress] = useProgress();
   const userName = profile?.full_name || "Kamu";
 

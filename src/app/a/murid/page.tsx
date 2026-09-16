@@ -1,17 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo } from "react";
 import {
   Search,
   Plus,
   Upload,
   Pencil,
-  UserX,
-  Loader2,
   Check,
   X,
   Mail,
-  Lock,
   User as UserIcon,
   BookOpen,
 } from "lucide-react";
@@ -20,9 +17,11 @@ import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
-import { createStudent, updateStudent } from "./actions";
+import {
+  DEMO_CLASSES,
+  DEMO_STUDENTS,
+  type DemoStudent,
+} from "@/lib/demo-data";
 
 /* ───────── Types ───────── */
 interface Murid {
@@ -34,14 +33,21 @@ interface Murid {
   avatar_url: string | null;
 }
 
+const PROTOTYPE_MSG =
+  "Mode prototipe — fitur ini dinonaktifkan. Data demo tidak tersimpan.";
+
 /* ───────── Main page ───────── */
 export default function KelolaMurid() {
-  const supabase = createClient();
-  const { profile: adminProfile } = useAuth();
-
-  const [students, setStudents] = useState<Murid[]>([]);
-  const [classOptions, setClassOptions] = useState<{ code: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [students, setStudents] = useState<Murid[]>(() =>
+    DEMO_STUDENTS.map((s) => ({
+      id: s.id,
+      full_name: s.full_name,
+      email: s.email,
+      nis: s.nis,
+      class_code: s.class_code,
+      avatar_url: null,
+    })),
+  );
   const [search, setSearch] = useState("");
   const [filterClass, setFilterClass] = useState("");
   const [modal, setModal] = useState<"add" | "edit" | "import" | null>(null);
@@ -51,41 +57,11 @@ export default function KelolaMurid() {
   // Form state
   const [fName, setFName] = useState("");
   const [fEmail, setFEmail] = useState("");
-  const [fPassword, setFPassword] = useState("");
   const [fNis, setFNis] = useState("");
   const [fClassCode, setFClassCode] = useState("");
   const [fError, setFError] = useState<string | null>(null);
 
-  /* ─── Fetch students ─── */
-  const fetchData = useCallback(async () => {
-    if (!adminProfile?.school_id) return;
-    setLoading(true);
-
-    // 1) Ambil murid
-    const { data: muridRaw } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, nis, class_code, avatar_url")
-      .eq("role", "murid")
-      .eq("school_id", adminProfile.school_id)
-      .order("full_name");
-
-    setStudents((muridRaw as Murid[]) || []);
-
-    // 2) Ambil daftar kelas untuk filter + dropdown (nama + kode)
-    const { data: kelas } = await supabase
-      .from("classes")
-      .select("code, name")
-      .eq("school_id", adminProfile.school_id)
-      .order("name");
-
-    setClassOptions(kelas?.map((k) => ({ code: k.code, name: k.name })) || []);
-
-    setLoading(false);
-  }, [supabase, adminProfile?.school_id]);
-
-  useEffect(() => {
-    if (adminProfile?.school_id) fetchData();
-  }, [adminProfile?.school_id, fetchData]);
+  const classOptions = DEMO_CLASSES.map((c) => ({ code: c.code, name: c.name }));
 
   /* ─── Helper: cari nama kelas dari kode ─── */
   function getClassName(code: string | null): string {
@@ -95,20 +71,23 @@ export default function KelolaMurid() {
 
   /* ─── Search + Filter ─── */
   const q = search.toLowerCase();
-  const filtered = students.filter((s) => {
-    const matchSearch =
-      s.full_name.toLowerCase().includes(q) ||
-      (s.nis && s.nis.includes(q)) ||
-      s.email.toLowerCase().includes(q);
-    const matchClass = !filterClass || s.class_code === filterClass;
-    return matchSearch && matchClass;
-  });
+  const filtered = useMemo(
+    () =>
+      students.filter((s) => {
+        const matchSearch =
+          s.full_name.toLowerCase().includes(q) ||
+          (s.nis && s.nis.includes(q)) ||
+          s.email.toLowerCase().includes(q);
+        const matchClass = !filterClass || s.class_code === filterClass;
+        return matchSearch && matchClass;
+      }),
+    [students, q, filterClass],
+  );
 
   /* ─── Open modals ─── */
   function openAdd() {
     setFName("");
     setFEmail("");
-    setFPassword("");
     setFNis("");
     setFClassCode("");
     setFError(null);
@@ -119,7 +98,6 @@ export default function KelolaMurid() {
   function openEdit(m: Murid) {
     setFName(m.full_name);
     setFEmail(m.email);
-    setFPassword("");
     setFNis(m.nis || "");
     setFClassCode(m.class_code || "");
     setFError(null);
@@ -133,43 +111,35 @@ export default function KelolaMurid() {
     setFError(null);
   }
 
-  /* ─── Submit ─── */
+  /* ─── Submit (demo — state lokal saja) ─── */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!fName || !fEmail) return;
     setSubmitting(true);
     setFError(null);
 
-    try {
-      const fd = new FormData();
-      fd.set("full_name", fName);
-      fd.set("email", fEmail);
-      fd.set("nis", fNis);
-      fd.set("class_code", fClassCode);
-
-      if (editId) {
-        fd.set("id", editId);
-        const r = await updateStudent(fd);
-        if (r?.error) throw new Error(r.error);
-      } else {
-        if (!fPassword) {
-          setFError("Password harus diisi untuk murid baru.");
-          setSubmitting(false);
-          return;
-        }
-        fd.set("password", fPassword);
-        fd.set("school_id", adminProfile?.school_id ?? "");
-        const r = await createStudent(fd);
-        if (r?.error) throw new Error(r.error);
-      }
-
-      closeModal();
-      fetchData();
-    } catch (err: any) {
-      setFError(err?.message || "Terjadi kesalahan.");
-    } finally {
-      setSubmitting(false);
+    if (editId) {
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === editId
+            ? { ...s, full_name: fName, email: fEmail, nis: fNis || null, class_code: fClassCode || null }
+            : s,
+        ),
+      );
+    } else {
+      const newStudent: DemoStudent = {
+        id: `stu-${Date.now()}`,
+        full_name: fName,
+        email: fEmail,
+        nis: fNis || `2024${String(students.length + 1).padStart(3, "0")}`,
+        class_code: fClassCode || DEMO_CLASSES[0].code,
+        joinedAt: new Date().toISOString().slice(0, 10),
+      };
+      setStudents((prev) => [...prev, { ...newStudent, avatar_url: null }]);
     }
+
+    closeModal();
+    setSubmitting(false);
   }
 
   /* ─── Render ─── */
@@ -214,15 +184,8 @@ export default function KelolaMurid() {
         </select>
       </div>
 
-      {/* Loading */}
-      {loading && (
-        <div className="mt-8 flex items-center justify-center gap-2 text-sm text-ink-soft">
-          <Loader2 size={18} className="animate-spin" /> Memuat data murid&hellip;
-        </div>
-      )}
-
       {/* Empty */}
-      {!loading && filtered.length === 0 && (
+      {filtered.length === 0 && (
         <div className="mt-8 text-center text-sm text-ink-soft">
           {students.length === 0
             ? 'Belum ada murid. Klik "Tambah Murid" untuk memulai.'
@@ -231,7 +194,7 @@ export default function KelolaMurid() {
       )}
 
       {/* Mobile: card list */}
-      {!loading && (
+      {filtered.length > 0 && (
         <div className="mt-4 space-y-3 md:hidden">
           {filtered.map((s) => (
             <Card key={s.id} padded>
@@ -252,14 +215,6 @@ export default function KelolaMurid() {
                 <Button variant="outline" size="sm" fullWidth onClick={() => openEdit(s)}>
                   <Pencil size={15} /> Edit
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-error"
-                  onClick={() => alert("Fitur nonaktifkan akan ditambahkan setelah update database.")}
-                >
-                  <UserX size={15} /> Nonaktifkan
-                </Button>
               </div>
             </Card>
           ))}
@@ -267,7 +222,7 @@ export default function KelolaMurid() {
       )}
 
       {/* Desktop: table */}
-      {!loading && filtered.length > 0 && (
+      {filtered.length > 0 && (
         <Card className="mt-4 hidden overflow-hidden p-0 md:block" padded={false}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[680px] text-sm">
@@ -394,26 +349,11 @@ export default function KelolaMurid() {
                 </select>
               </div>
 
-              {/* Password (hanya untuk tambah) */}
               {!editId && (
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-ink">Password Awal</label>
-                  <div className="relative">
-                    <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" />
-                    <Input
-                      type="password"
-                      placeholder="Min. 6 karakter"
-                      className="pl-10"
-                      value={fPassword}
-                      onChange={(e) => setFPassword(e.target.value)}
-                      required
-                      minLength={6}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-ink-soft">
-                    Murid bisa mengganti password setelah login.
-                  </p>
-                </div>
+                <p className="rounded-lg bg-gold/[0.08] p-3 text-xs text-ink-soft">
+                  Mode prototipe: murid baru hanya tersimpan sementara di sesi ini
+                  (tidak ada akun login sungguhan).
+                </p>
               )}
 
               {/* Error */}
@@ -430,7 +370,7 @@ export default function KelolaMurid() {
                 </Button>
                 <Button type="submit" fullWidth disabled={submitting}>
                   {submitting ? (
-                    <><Loader2 size={16} className="animate-spin" /> Menyimpan&hellip;</>
+                    <><Check size={16} /> Menyimpan&hellip;</>
                   ) : editId ? (
                     <><Check size={16} /> Simpan</>
                   ) : (
@@ -455,6 +395,9 @@ export default function KelolaMurid() {
             <p className="mt-2 text-xs text-ink-soft">Format: Nama, NIS, Kelas, Email</p>
             <p className="text-xs text-ink-soft">(Coming soon)</p>
             <div className="mt-4 flex gap-2">
+              <Button variant="outline" fullWidth onClick={() => alert(PROTOTYPE_MSG)}>
+                Info
+              </Button>
               <Button variant="outline" fullWidth onClick={closeModal}>
                 Tutup
               </Button>

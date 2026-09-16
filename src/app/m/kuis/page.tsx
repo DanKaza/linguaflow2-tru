@@ -8,6 +8,7 @@ import {
   Trophy,
   Zap,
   ClipboardList,
+  FileCheck,
   Flame,
   Clock,
   ChevronRight,
@@ -18,13 +19,21 @@ import {
   Check,
 } from "lucide-react";
 import { StudentShell } from "@/components/layout/StudentShell";
+import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import {
   AnimatedPage,
   staggerContainer,
   staggerItem,
 } from "@/components/ui/AnimatedPage";
 import { useProgress } from "@/lib/progress";
+import { useSchool } from "@/lib/school";
+import { useDemoSession } from "@/lib/demo-session";
+import {
+  DEMO_TASKS,
+  DEMO_QUIZZES,
+} from "@/lib/demo-data";
 
 type Tab = "guru" | "harian";
 
@@ -126,6 +135,42 @@ export default function KuisList() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("guru");
   const [progress] = useProgress();
+  const { profile } = useDemoSession();
+  const [school] = useSchool();
+
+  // Kelas murid demo (XII RPL 1) — tugas dari kelas ini yang tampil.
+  const myClassCode = profile?.class_code ?? "";
+  const guruTasks = [
+    ...DEMO_TASKS.filter((t) => t.class_code === myClassCode),
+    ...school.tasks
+      .filter((t) => t.classId === myClassCode)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        type: t.type,
+        deadline: t.deadline,
+        level: t.level,
+        category: t.category,
+        target: t.target,
+      })),
+  ];
+  const guruQuizzes = [
+    ...DEMO_QUIZZES.filter((q) => q.class_code === myClassCode).map((q) => ({
+      id: q.id,
+      title: q.title,
+      deadline: null as string | null,
+      passingGrade: q.passing_grade,
+    })),
+    ...school.quizzes
+      .filter((q) => q.classId === myClassCode)
+      .map((q) => ({
+        id: q.id,
+        title: q.title,
+        deadline: null as string | null,
+        passingGrade: q.passingGrade,
+      })),
+  ];
+  const hasGuruTasks = guruTasks.length > 0 || guruQuizzes.length > 0;
 
   return (
     <StudentShell noHeader>
@@ -246,13 +291,45 @@ export default function KuisList() {
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             >
               {/* ───────── TUGAS GURU ───────── */}
-              {tab === "guru" && (
-                <EmptyState
-                  icon={ClipboardList}
-                  title="Tidak ada tugas"
-                  desc="Gurumu belum memberikan tugas. Tugas yang dikirim akan muncul di sini."
-                />
-              )}
+              {tab === "guru" &&
+                (hasGuruTasks ? (
+                  <div className="mt-4 space-y-3">
+                    {guruTasks.map((t) => (
+                      <Card key={`t-${t.id}`} padded className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-tint-soft">
+                          <ClipboardList size={20} className="text-indigo" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-ink">{t.title}</p>
+                          <p className="text-xs text-ink-soft mt-0.5">
+                            {t.level} · {t.category} · target {t.target} soal
+                          </p>
+                        </div>
+                        <Badge tone="indigo">{t.type === "kuis" ? "Kuis" : "Flashcard"}</Badge>
+                      </Card>
+                    ))}
+                    {guruQuizzes.map((q) => (
+                      <Card key={`q-${q.id}`} padded className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/10">
+                          <FileCheck size={20} className="text-gold" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-ink">{q.title}</p>
+                          <p className="text-xs text-ink-soft mt-0.5">
+                            Passing grade {q.passingGrade}
+                          </p>
+                        </div>
+                        <Badge tone="gold">Kuis</Badge>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={ClipboardList}
+                    title="Tidak ada tugas"
+                    desc="Gurumu belum memberikan tugas. Tugas yang dikirim akan muncul di sini."
+                  />
+                ))}
 
               {/* ───────── KUIS HARIAN ───────── */}
               {tab === "harian" && (

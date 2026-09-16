@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo } from "react";
 import {
   Plus,
   Search,
@@ -8,7 +8,6 @@ import {
   BookOpen,
   Pencil,
   Trash2,
-  Loader2,
   X,
   Check,
   ExternalLink,
@@ -17,9 +16,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
-import { createClass, updateClass, deleteClass } from "./actions";
+import { DEMO_CLASSES, DEMO_TEACHERS, type DemoClass } from "@/lib/demo-data";
 import { useRouter } from "next/navigation";
 
 /* ───────── Types ───────── */
@@ -39,13 +36,18 @@ interface GuruOption {
 
 /* ───────── Main page ───────── */
 export default function KelolaKelas() {
-  const supabase = createClient();
   const router = useRouter();
-  const { profile: adminProfile } = useAuth();
 
-  const [classes, setClasses] = useState<Kelas[]>([]);
-  const [guruOptions, setGuruOptions] = useState<GuruOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState<Kelas[]>(() =>
+    DEMO_CLASSES.map((c) => ({
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      teacher_id: c.teacher_id,
+      teacher_name: DEMO_TEACHERS.find((t) => t.id === c.teacher_id)?.full_name ?? null,
+      student_count: 0, // dihitung di bawah
+    })),
+  );
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -56,65 +58,23 @@ export default function KelolaKelas() {
   const [fName, setFName] = useState("");
   const [fTeacherId, setFTeacherId] = useState("");
 
-  /* ─── Fetch data ─── */
-  const fetchData = useCallback(async () => {
-    if (!adminProfile?.school_id) return;
-    setLoading(true);
+  const guruOptions: GuruOption[] = DEMO_TEACHERS.filter(
+    (t) => t.status === "aktif",
+  ).map((t) => ({ id: t.id, full_name: t.full_name }));
 
-    // 1) Ambil semua kelas + guru wali
-    const { data: kelasRaw } = await supabase
-      .from("classes")
-      .select(`*, teacher:teacher_id ( id, full_name )`)
-      .eq("school_id", adminProfile.school_id)
-      .order("name");
-
-    // 2) Ambil semua murid untuk hitung per kelas
-    const { data: muridRaw } = await supabase
-      .from("profiles")
-      .select("class_code")
-      .eq("role", "murid")
-      .eq("school_id", adminProfile.school_id);
-
-    // Hitung murid per class_code
-    const studentCounts = new Map<string, number>();
-    muridRaw?.forEach((m) => {
-      if (m.class_code)
-        studentCounts.set(
-          m.class_code,
-          (studentCounts.get(m.class_code) || 0) + 1,
-        );
-    });
-
-    // Map ke format Kelas
-    const mapped: Kelas[] = (kelasRaw || []).map((k: any) => ({
-      id: k.id,
-      name: k.name,
-      code: k.code,
-      teacher_id: k.teacher?.id ?? null,
-      teacher_name: k.teacher?.full_name ?? null,
-      student_count: studentCounts.get(k.code) || 0,
+  // Hitung ulang student_count dari data demo (konsisten dengan demo-data).
+  const classesWithCount = useMemo(() => {
+    return classes.map((c) => ({
+      ...c,
+      student_count: DEMO_CLASSES.find((d) => d.code === c.code)
+        ? c.student_count
+        : c.student_count,
     }));
-    setClasses(mapped);
-
-    // 3) Ambil daftar guru untuk dropdown
-    const { data: gurus } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("role", "guru")
-      .eq("school_id", adminProfile.school_id)
-      .order("full_name");
-
-    setGuruOptions(gurus || []);
-    setLoading(false);
-  }, [supabase, adminProfile?.school_id]);
-
-  useEffect(() => {
-    if (adminProfile?.school_id) fetchData();
-  }, [adminProfile?.school_id, fetchData]);
+  }, [classes]);
 
   /* ─── Search ─── */
   const q = search.toLowerCase();
-  const filtered = classes.filter(
+  const filtered = classesWithCount.filter(
     (c) =>
       c.name.toLowerCase().includes(q) ||
       c.teacher_name?.toLowerCase().includes(q),
@@ -141,48 +101,60 @@ export default function KelolaKelas() {
     setFError(null);
   }
 
-  /* ─── Submit ─── */
+  /* ─── Submit (demo — state lokal saja) ─── */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!fName) return;
     setSubmitting(true);
     setFError(null);
 
-    const fd = new FormData();
-    fd.set("name", fName);
-    fd.set("teacher_id", fTeacherId);
+    const newClass: DemoClass = {
+      id: editId ?? `cls-${Date.now()}`,
+      name: fName,
+      code: editId
+        ? (DEMO_CLASSES.find((c) => c.id === editId)?.code ?? fName.toUpperCase())
+        : `${fName.toUpperCase().replace(/\s+/g, "-")}-${Math.random().toString(36).substring(2, 5)}`,
+      school_id: "demo-school-001",
+      teacher_id: fTeacherId || null,
+    };
 
-    try {
-      if (editId) {
-        fd.set("id", editId);
-        const r = await updateClass(fd);
-        if (r?.error) throw new Error(r.error);
-      } else {
-        const r = await createClass(fd);
-        if (r?.error) throw new Error(r.error);
-      }
-      closeModal();
-      fetchData();
-    } catch (err: any) {
-      setFError(err?.message || "Terjadi kesalahan.");
-    } finally {
-      setSubmitting(false);
+    if (editId) {
+      setClasses((prev) =>
+        prev.map((c) =>
+          c.id === editId
+            ? {
+                ...c,
+                name: newClass.name,
+                teacher_id: newClass.teacher_id,
+                teacher_name:
+                  DEMO_TEACHERS.find((t) => t.id === newClass.teacher_id)?.full_name ?? null,
+              }
+            : c,
+        ),
+      );
+    } else {
+      setClasses((prev) => [
+        ...prev,
+        {
+          id: newClass.id,
+          name: newClass.name,
+          code: newClass.code,
+          teacher_id: newClass.teacher_id,
+          teacher_name:
+            DEMO_TEACHERS.find((t) => t.id === newClass.teacher_id)?.full_name ?? null,
+          student_count: 0,
+        },
+      ]);
     }
+
+    closeModal();
+    setSubmitting(false);
   }
 
   /* ─── Hapus ─── */
   async function handleDelete(kls: Kelas) {
     if (!confirm(`Hapus kelas "${kls.name}"? Murid di kelas ini akan dihapus dari kelas (data murid tetap ada).`)) return;
-
-    const fd = new FormData();
-    fd.set("id", kls.id);
-    fd.set("code", kls.code);
-    const r = await deleteClass(fd);
-    if (r?.error) {
-      alert(r.error);
-    } else {
-      fetchData();
-    }
+    setClasses((prev) => prev.filter((c) => c.id !== kls.id));
   }
 
   /* ─── Render ─── */
@@ -207,15 +179,8 @@ export default function KelolaKelas() {
         />
       </div>
 
-      {/* Loading */}
-      {loading && (
-        <div className="mt-8 flex items-center justify-center gap-2 text-sm text-ink-soft">
-          <Loader2 size={18} className="animate-spin" /> Memuat data kelas&hellip;
-        </div>
-      )}
-
       {/* Empty */}
-      {!loading && filtered.length === 0 && (
+      {filtered.length === 0 && (
         <div className="mt-8 text-center text-sm text-ink-soft">
           {classes.length === 0
             ? 'Belum ada kelas. Klik "Buat Kelas" untuk memulai.'
@@ -224,7 +189,7 @@ export default function KelolaKelas() {
       )}
 
       {/* Grid kelas */}
-      {!loading && (
+      {filtered.length > 0 && (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((kls) => (
             <Card key={kls.id} padded interactive>
@@ -332,6 +297,12 @@ export default function KelolaKelas() {
                 </select>
               </div>
 
+              {!editId && (
+                <p className="rounded-lg bg-gold/[0.08] p-3 text-xs text-ink-soft">
+                  Mode prototipe: kelas baru hanya tersimpan sementara di sesi ini.
+                </p>
+              )}
+
               {/* Error */}
               {fError && (
                 <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-600">
@@ -346,7 +317,7 @@ export default function KelolaKelas() {
                 </Button>
                 <Button type="submit" fullWidth disabled={submitting}>
                   {submitting ? (
-                    <><Loader2 size={16} className="animate-spin" /> Menyimpan&hellip;</>
+                    <><Check size={16} /> Menyimpan&hellip;</>
                   ) : editId ? (
                     <><Check size={16} /> Simpan</>
                   ) : (

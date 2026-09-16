@@ -20,7 +20,8 @@ import { Card } from "@/components/ui/Card";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useTimeGreeting } from "@/lib/time-greeting";
 import { useProgress, babProgress } from "@/lib/progress";
-import { useAuth } from "@/lib/auth-context";
+import { useDemoSession } from "@/lib/demo-session";
+import { DEMO_CLASSES } from "@/lib/demo-data";
 
 const quickActions = [
   { label: "Kuis Harian", icon: ListChecks, href: "/m/kuis", desc: "Uji pemahaman" },
@@ -31,7 +32,7 @@ const quickActions = [
 
 export default function StudentDashboard() {
   const timeGreeting = useTimeGreeting();
-  const { profile } = useAuth();
+  const { profile } = useDemoSession();
   const [progress] = useProgress();
 
   const firstName = (profile?.full_name || "Murid").trim().split(/\s+/)[0] || "Murid";
@@ -71,11 +72,14 @@ export default function StudentDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {profile?.class_code && (
-                      <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold">
-                        {profile.class_code}
-                      </span>
-                    )}
+                    {(() => {
+                      const kelas = DEMO_CLASSES.find((c) => c.code === profile?.class_code);
+                      return kelas ? (
+                        <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold">
+                          {kelas.name}
+                        </span>
+                      ) : null;
+                    })()}
                     <NotificationBell size={20} color="text-white" />
                   </div>
                 </div>

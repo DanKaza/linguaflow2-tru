@@ -1,6 +1,10 @@
-"use server";
+"use client";
 
-import { createClient } from "@/lib/supabase/server";
+// Mode prototipe: hasil kuis tidak dikirim ke server.
+// Dulu: Server Action yang INSERT ke tabel `quiz_attempts` (Supabase).
+// Sekarang: disimpan sementara di localStorage agar data demo tetap hidup.
+
+import { getDemoAttemptsByStudent } from "@/lib/demo-data";
 
 export interface QuizAttemptInput {
   score: number;
@@ -9,15 +13,12 @@ export interface QuizAttemptInput {
   totalXP: number;
 }
 
+const STORAGE_KEY = "lf-demo-attempts";
+
 /**
- * Rekam hasil kuis murid ke tabel `quiz_attempts` — sumber data
- * Laporan Sekolah (admin) dan laporan guru.
- *
- * Dipanggil non-blocking (fire-and-forget) dari halaman kuis; kegagalan
- * tidak memblokir navigasi murid ke halaman review.
- *
- * Keamanan: RLS memastikan murid hanya bisa menambah attempt dengan
- * student_id = auth.uid(); nilai divalidasi & dibatasi di sini.
+ * Rekam hasil kuis murid (demo, non-blocking).
+ * Kelemahan yang disengaja dibanding versi Supabase: data hanya hidup
+ * di perangkat ini. Dipanggil fire-and-forget dari halaman kuis.
  */
 export async function recordQuizAttempt(input: QuizAttemptInput) {
   const total = Math.max(1, Math.round(Number(input.total) || 0));
@@ -28,38 +29,39 @@ export async function recordQuizAttempt(input: QuizAttemptInput) {
   );
   const totalXP = Math.max(0, Math.round(Number(input.totalXP) || 0));
 
-  const supabase = await createClient();
+  try {
+    const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as {
+      score: number;
+      correct_count: number;
+      total_questions: number;
+      total_xp: number;
+      submitted_at: string;
+    }[];
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Tidak terautentikasi." };
+    existing.push({
+      score,
+      correct_count: correctCount,
+      total_questions: total,
+      total_xp: totalXP,
+      submitted_at: new Date().toISOString(),
+    });
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("school_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!profile || profile.role !== "murid") {
-    return { error: "Hanya akun murid yang bisa merekam pengerjaan kuis." };
-  }
-
-  const { error } = await supabase.from("quiz_attempts").insert({
-    student_id: user.id,
-    school_id: profile.school_id ?? null,
-    quiz_id: null, // kuis harian (soal acak dari vocab bank)
-    score,
-    correct_count: correctCount,
-    total_questions: total,
-    total_xp: totalXP,
-  });
-
-  if (error) {
-    // Kegagalan umum: tabel belum dibuat (migrasi 001 belum dijalankan).
-    console.error("Gagal merekam attempt kuis:", error.message);
-    return { error: error.message };
+    // Simpan maksimal 50 attempt terakhir supaya storage tidak membengkak.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing.slice(-50)));
+  } catch {
+    /* localStorage tidak tersedia — abaikan (fire-and-forget) */
   }
 
   return { error: null };
+}
+
+/** Riwayat attempt demo milik murid (data statis + yang baru direkam lokal). */
+export function getMyAttempts() {
+  let local: { score: number; submitted_at: string }[] = [];
+  try {
+    local = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+  } catch {
+    /* ignore */
+  }
+  return [...getDemoAttemptsByStudent("demo-murid-001"), ...local];
 }

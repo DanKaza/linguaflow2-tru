@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
   Pencil,
   Moon,
-  LogOut,
   Settings as SettingsIcon,
   Shield,
   Bell,
@@ -21,12 +19,16 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useTheme } from "@/lib/theme";
-import { useAuth } from "@/lib/auth-context";
-import { createClient } from "@/lib/supabase/client";
+import { useDemoSession } from "@/lib/demo-session";
+import {
+  DEMO_SCHOOL,
+  DEMO_STUDENTS,
+  getDemoClassesByTeacher,
+} from "@/lib/demo-data";
 
 const settings = [
   { icon: Pencil, label: "Edit Profil", desc: "Nama, foto, biodata" },
-  { icon: Shield, label: "Ganti Password", desc: "Keamanan akun" },
+  { icon: Shield, label: "Ganti Password", desc: "Dinonaktifkan di mode prototipe" },
   { icon: Bell, label: "Notifikasi", desc: "Submission & pengingat" },
   { icon: Moon, label: "Mode Gelap", toggle: true },
   { icon: SettingsIcon, label: "Bahasa", desc: "Indonesia, English, 日本語" },
@@ -34,62 +36,20 @@ const settings = [
 
 export default function TeacherProfile() {
   const router = useRouter();
-  const supabase = createClient();
-  const { profile: teacherProfile } = useAuth();
+  const { profile } = useDemoSession();
   const { theme, toggle: toggleTheme } = useTheme();
   const dark = theme === "dark";
 
-  const [classCount, setClassCount] = useState(0);
-  const [studentCount, setStudentCount] = useState(0);
-  const [classNames, setClassNames] = useState<string[]>([]);
-  const [schoolName, setSchoolName] = useState("Sekolah");
-  const [loadingStats, setLoadingStats] = useState(true);
-
-  useEffect(() => {
-    if (!teacherProfile?.id) return;
-
-    async function load() {
-      if (!teacherProfile?.id) return;
-
-      // 1) Ambil kelas yang diajar guru ini
-      const { data: classes } = await supabase
-        .from("classes")
-        .select("id, name, code")
-        .eq("teacher_id", teacherProfile.id);
-
-      const names = (classes || []).map((c: any) => c.name);
-      setClassNames(names);
-      setClassCount(names.length);
-
-      // 2) Hitung total murid di kelas-kelas ini
-      if (classes && classes.length > 0) {
-        const codes = classes.map((c: any) => c.code);
-        const { count } = await supabase
-          .from("profiles")
-          .select("*", { count: "exact", head: true })
-          .eq("role", "murid")
-          .in("class_code", codes);
-        setStudentCount(count ?? 0);
-      }
-
-      // 3) Ambil nama sekolah
-      if (teacherProfile.school_id) {
-        const { data: school } = await supabase
-          .from("schools")
-          .select("name")
-          .eq("id", teacherProfile.school_id)
-          .maybeSingle();
-        if (school?.name) setSchoolName(school.name);
-      }
-
-      setLoadingStats(false);
-    }
-
-    load();
-  }, [teacherProfile?.id, teacherProfile?.school_id, supabase]);
+  const teacherId = profile?.id ?? "demo-guru-001";
+  const teacherClasses = getDemoClassesByTeacher(teacherId);
+  const classNames = teacherClasses.map((c) => c.name);
+  const studentCount = teacherClasses.reduce(
+    (sum, c) => sum + DEMO_STUDENTS.filter((s) => s.class_code === c.code).length,
+    0,
+  );
 
   const stats = [
-    { v: String(classCount), l: "Kelas Diajar", icon: Users },
+    { v: String(classNames.length), l: "Kelas Diajar", icon: Users },
     { v: String(studentCount), l: "Total Murid", icon: ClipboardList },
     { v: "—", l: "Tugas Aktif", icon: FileQuestion },
     { v: "—", l: "Rata² Skor", icon: Award },
@@ -105,7 +65,7 @@ export default function TeacherProfile() {
             whileHover={{ scale: 1.03 }}
             transition={{ type: "spring", stiffness: 200 }}
           >
-            <Avatar name={teacherProfile?.full_name ?? "Guru"} size={88} />
+            <Avatar name={profile?.full_name ?? "Guru"} size={88} />
             <motion.button
               whileTap={{ scale: 0.85 }}
               className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-paper bg-indigo text-white shadow-soft transition-colors hover:bg-indigo-tint"
@@ -120,7 +80,7 @@ export default function TeacherProfile() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
           >
-            {teacherProfile?.full_name ?? "Guru"}
+            {profile?.full_name ?? "Guru"}
           </motion.h1>
           <motion.p
             className="text-sm text-ink-soft"
@@ -128,12 +88,10 @@ export default function TeacherProfile() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
           >
-            Guru · {schoolName}
+            Guru · {DEMO_SCHOOL.name}
           </motion.p>
           <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-            {loadingStats ? (
-              <span className="text-xs text-ink-soft">Memuat kelas...</span>
-            ) : classNames.length > 0 ? (
+            {classNames.length > 0 ? (
               classNames.map((s) => (
                 <Badge key={s} tone="soft">
                   {s}
@@ -208,15 +166,15 @@ export default function TeacherProfile() {
           })}
         </motion.div>
 
-        {/* Logout */}
+        {/* Keluar — kembali ke pemilih akun demo */}
         <motion.div variants={staggerItem}>
           <Card className="mt-2 transition-all hover:shadow-soft-lg" padded>
             <motion.button
               whileTap={{ scale: 0.98 }}
               className="flex w-full items-center gap-3 text-sm font-bold text-vermillion"
-              onClick={() => router.push("/login")}
+              onClick={() => router.push("/masuk")}
             >
-              <LogOut size={18} /> Keluar
+              <ChevronRight size={18} className="rotate-180" /> Ganti Akun Demo
             </motion.button>
           </Card>
         </motion.div>

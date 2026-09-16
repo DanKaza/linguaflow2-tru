@@ -17,7 +17,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/Logo";
-import { useAuth } from "@/lib/auth-context";
+import { useDemoSession } from "@/lib/demo-session";
+import { DEMO_CLASSES } from "@/lib/demo-data";
 
 interface SidebarItem {
   label: string;
@@ -45,7 +46,7 @@ export function StudentSidebar({
   onToggle: () => void;
 }) {
   const path = usePathname();
-  const { profile, signOut } = useAuth();
+  const { profile, signOut } = useDemoSession();
   const userName = profile?.full_name || "Murid";
 
   return (
@@ -118,7 +119,8 @@ export function StudentSidebar({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-ink">{userName}</p>
                   <p className="truncate text-xs text-ink-soft">
-                    {profile?.class_code || (profile?.role === "murid" ? "Murid" : "")}
+                    {DEMO_CLASSES.find((c) => c.code === profile?.class_code)?.name ||
+                      (profile?.role === "murid" ? "Murid" : "")}
                   </p>
                 </div>
               </div>

@@ -19,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/Logo";
 import { useState } from "react";
-import { useAuth } from "@/lib/auth-context";
+import { useDemoSession } from "@/lib/demo-session";
 
 export interface SidebarItem {
   label: string;
@@ -45,7 +45,7 @@ export function AppSidebar({
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const { profile, signOut } = useAuth();
+  const { profile, signOut } = useDemoSession();
   const userName = profile?.full_name || propUserName || "User";
   const userSub = propUserSub || (role === "teacher" ? "Guru" : "Admin");
 

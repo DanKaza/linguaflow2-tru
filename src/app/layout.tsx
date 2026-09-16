@@ -3,7 +3,7 @@ import Script from "next/script";
 import { Inter, Noto_Sans_JP, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
-import { AuthProvider } from "@/lib/auth-context";
+import { DemoSessionProvider } from "@/lib/demo-session";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -24,9 +24,9 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "LinguaFlow School — Belajar Bahasa Jepang",
+  title: "LinguaFlow - Belajar Bahasa Jepang",
   description:
-    "Platform belajar Bahasa Jepang interaktif untuk murid SMK Indonesia. AI Sensei, flashcard, kuis, dan tracking progress real-time.",
+    "Platform belajar Bahasa Jepang interaktif untuk murid Indonesia.",
 };
 
 /** Inline script to set dark class before hydration — prevents flash */
@@ -58,7 +58,7 @@ export default function RootLayout({
           Langsung ke konten utama
         </a>
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <DemoSessionProvider>{children}</DemoSessionProvider>
         </ThemeProvider>
       </body>
     </html>

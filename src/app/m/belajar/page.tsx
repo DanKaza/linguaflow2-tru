@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { RingProgress } from "@/components/ui/ProgressBar";
 import { AnimatedPage, staggerContainer, staggerItem } from "@/components/ui/AnimatedPage";
 import { useTimeGreeting } from "@/lib/time-greeting";
-import { useAuth } from "@/lib/auth-context";
+import { useDemoSession } from "@/lib/demo-session";
 import { useProgress } from "@/lib/progress";
 import { vocabulary } from "@/data/vocabulary";
 import type { JLPTLevel } from "@/lib/types";
@@ -36,7 +36,7 @@ const categories: Category[] = [
 
 export default function ChooseDeck() {
   const timeGreeting = useTimeGreeting();
-  const { profile } = useAuth();
+  const { profile } = useDemoSession();
   const [progress] = useProgress();
   const [activeLevel, setActiveLevel] = useState<JLPTLevel>("N5");
 
