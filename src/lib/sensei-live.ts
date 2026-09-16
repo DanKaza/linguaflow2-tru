@@ -97,6 +97,8 @@ export class SenseiLiveSession {
   private closed = false;
   /** Resolve promise open() saat setupComplete tiba dari server. */
   private setupResolve: (() => void) | null = null;
+  /** Reject promise open() bila sesi ditutup di tengah handshake. */
+  private setupReject: ((err: Error) => void) | null = null;
   /** Timer handshake — dibersihkan saat setupComplete / close. */
   private setupTimer: number | null = null;
 
@@ -146,6 +148,9 @@ export class SenseiLiveSession {
     await new Promise<void>((resolve, reject) => {
       // Satu timer untuk seluruh handshake (buka socket + setupComplete).
       this.setupTimer = window.setTimeout(() => {
+        this.setupTimer = null;
+        this.setupResolve = null;
+        this.setupReject = null;
         this.setStatus("error");
         this.events.onError?.("Waktu habis — Gemini Live tidak merespons.");
         try {
@@ -156,6 +161,7 @@ export class SenseiLiveSession {
         reject(new Error("Waktu habis — Gemini Live tidak merespons."));
       }, 20_000);
       this.setupResolve = resolve;
+      this.setupReject = reject;
 
       // 3) Handshake setup begitu socket terbuka.
       ws.onopen = () => {
@@ -177,10 +183,14 @@ export class SenseiLiveSession {
       };
       ws.onerror = () => {
         this.clearSetupTimer();
+        this.setupResolve = null;
+        this.setupReject = null;
         reject(new Error("Tidak bisa terhubung ke Gemini Live. Periksa koneksi internetmu."));
       };
       ws.onclose = (e) => {
         this.clearSetupTimer();
+        this.setupResolve = null;
+        this.setupReject = null;
         if (this.closed) return;
         this.closed = true;
         const reason =
@@ -232,12 +242,14 @@ export class SenseiLiveSession {
     }
 
     if (ev.setupComplete) {
+      // URUTAN PENTING: ambil & nol-kan resolver SEBELUM clearSetupTimer —
+      // jangan sampai referensinya terbuang sebelum dipanggil.
+      const resolve = this.setupResolve;
+      this.setupResolve = null;
       this.clearSetupTimer();
       this.setStatus("listening");
       this.events.onReady?.({ voice: this.voice, model: this.model });
-      // Lepaskan open() dari penggantungan handshake.
-      this.setupResolve?.();
-      this.setupResolve = null;
+      resolve?.();
       return;
     }
 
@@ -319,12 +331,17 @@ export class SenseiLiveSession {
       window.clearTimeout(this.setupTimer);
       this.setupTimer = null;
     }
-    this.setupResolve = null;
   }
 
   /** Tutup sesi & bersihkan audio. */
   close() {
     this.clearSetupTimer();
+    // Setel ulang promise handshake yang masih menggantung (close di tengah
+    // handshake tidak boleh membuat open() menggantung selamanya).
+    const rejectPending = this.setupReject;
+    this.setupResolve = null;
+    this.setupReject = null;
+    rejectPending?.(new Error("Sesi ditutup sebelum selesai disiapkan."));
     if (this.closed) {
       this.cleanup();
       return;
